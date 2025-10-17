@@ -45,33 +45,7 @@ class OpenAIService
         return $n;
     }
 
-    public function generateThreeDigit(string $model = 'gpt-5'): string
-    {
-        try {
-            $res = $this->client->post('chat/completions', [
-                'headers' => [
-                    'Authorization' => 'Bearer ' . $this->apiKey,
-                    'Content-Type' => 'application/json'
-                ],
-                'json' => [
-                    'model' => $model,
-                    'messages' => [
-                        ['role' => 'user', 'content' => "Produce a random 3-digit number (digits only, no text). Return only the number (e.g., 527)."],
-                    ],
-                    'temperature' => 1.0,
-                    'max_tokens' => 5,
-                ]
-            ]);
-            $data = json_decode((string)$res->getBody(), true);
-            $cand = trim($data['choices'][0]['message']['content'] ?? '');
-            if (preg_match('/^\d{3}$/', $cand)) {
-                return $cand;
-            }
-        } catch (\Throwable $e) {
-            // ignore and fallback
-        }
-        return (string)random_int(100, 999);
-    }
+    // v1 generateThreeDigit removed - using generateSevenDigit for v2
 
     public function generateAnnouncementText(string $model = 'gpt-5'): string
     {

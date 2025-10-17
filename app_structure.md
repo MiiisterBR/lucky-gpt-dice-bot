@@ -8,15 +8,23 @@
 - Game sessions produce 7 dice values. Scoring compares the 7 values to the daily golden number.
 - UX is command‑based only (no inline keyboards). All code, texts, and messages are in English.
 
-## Commands (text only)
+## Commands & Reply Keyboard
 
+**Persistent Reply Keyboard** (buttons at bottom of chat):
+- Row 1: **Start** (or **Next** if session active), **Status**
+- Row 2: **Leaderboard**, **Wallet**
+- Row 3: **Deposit**, **Withdraw**
+
+Buttons trigger commands:
 - `/help` — Show help and available commands.
-- `/status` — Show coins, current session state (rolled count, last roll), and wallet address.
-- `/startgame` — Start a new session (blocked during quiet hours 23:00–00:00; ongoing sessions can finish).
-- `/next` — Roll next dice for the active session (up to 7 rolls, with configurable sleep after each roll).
-- `/wallet` — If no wallet exists, ask user to send Worldcoin address; if exists, accept a new address to update. Store/update `wallet_address` in DB.
+- `/status` — Show coins, current session state (rolled count, digits so far), and wallet address.
+- `/startgame` (button: **Start**) — Start a new 7-dice session (blocked during quiet hours 23:00–00:00; ongoing sessions can finish).
+- `/next` (button: **Next**) — Roll next dice for the active session (up to 7 rolls, with configurable sleep after each roll).
+- `/wallet` — View current wallet address.
+- `/wallet <ADDRESS>` — Set or update Worldcoin wallet address (stored in `users.wallet_address`).
 - `/deposit` — Show deposit address configured in Admin settings.
-- `/withdraw` — Ask “How many World Coins do you want to withdraw?”, then create a withdraw request; call a test API and reply success/error accordingly.
+- `/withdraw <AMOUNT>` — Create a withdraw request; validates balance, calls a test API, and replies success/error.
+- `/leaderboard` — Show top 7 winners and 7 lowest balances.
 
 ## Scoring Rules
 
@@ -40,11 +48,12 @@
 ## Technical Details
 
 - Language: PHP 8+
-- Database: MySQL
+- Database: MySQL/MariaDB
 - Entry point: `public/game.php` (Telegram webhook)
 - Architecture: Controllers, Services, Repositories, Models (SOLID/SoC)
-- No inline keyboards. Rely on commands and plain text prompts.
-- Sleep between rolls: `sleep_ms_between_rolls` (default 3000 ms), configurable in settings.
+- UX: Command-based with persistent **Reply Keyboard** (no inline keyboards).
+- Sleep between rolls: `sleep_ms_between_rolls` (default 3000 ms), configurable in Admin settings.
+- All code, comments, and bot messages in English.
 
 ## Database Schema (MySQL)
 
@@ -99,17 +108,32 @@ telegram-game-bot/
 
 ## Game Flow Summary
 
-1) User sends `/startgame` (blocked 23:00–00:00). A new session is created for the current daily golden number.
-2) User sends `/next` up to 7 times; each call rolls a dice (1–6), appends to session, sleeps `sleep_ms_between_rolls` ms, and replies with the current progress (e.g., `3/7 rolled: 2, 6, 4`).
-3) When 7 values are collected, compute the score according to the Scoring Rules and add coins to the user.
-4) If exact ordered match, generate a personalized congratulatory text with ChatGPT and send it.
+1) User taps **Start** or sends `/startgame` (blocked 23:00–00:00). A new session is created for today's golden number. The first dice roll happens immediately.
+2) Reply keyboard changes: **Start** button becomes **Next**.
+3) User taps **Next** or sends `/next` up to 6 more times (7 total rolls). Each call:
+   - Rolls a dice (result 1–6)
+   - Appends result to session's `result_digits`
+   - Sleeps `sleep_ms_between_rolls` ms (default 3000)
+   - Replies with progress: "Roll 3/7: 4 | Progress: 2, 5, 4"
+4) When 7 values are collected:
+   - Compute score according to Scoring Rules
+   - Add coins to user's balance
+   - If exact ordered match (all 7 digits in correct order), generate a personalized congratulatory message via ChatGPT
+   - Mark session as finished
+   - Reply keyboard changes: **Next** button becomes **Start** again
 
 ## Wallet / Deposit / Withdraw
 
-- `/wallet`: Ask for the user’s Worldcoin address if missing; if supplied again, update it.
-- `/deposit`: Return the deposit address from Admin settings.
-- `/withdraw`: Ask for an amount (integer). Create a new `withdraw_requests` row and call a stub test API; reply with success/failed accordingly.
-- Users can play as long as they have coins. Minimum balance to withdraw is `withdraw_min_balance` (default 1001).
+- **`/wallet`**: View current Worldcoin wallet address or prompt user to set it if not yet configured.
+- **`/wallet <ADDRESS>`**: Set or update wallet address. Stored in `users.wallet_address` (unique).
+- **`/deposit`**: Display the deposit address from Admin settings (`deposit_wallet_address`).
+- **`/withdraw <AMOUNT>`**: 
+  1. Validate user has minimum balance (`withdraw_min_balance`, default 1001)
+  2. Validate amount > 0 and ≤ user's coins
+  3. Create a new row in `withdraw_requests` (status='pending')
+  4. Call a stub test API (currently always returns success)
+  5. Update request status and reply to user
+- Users can play as long as they have coins. Coins are earned by matching the golden number.
 
 ## OpenAI Integration
 
