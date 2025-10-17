@@ -70,7 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 if (!$isLogged && $adminCount === 0) {
-    echo '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">\n<title>Admin Registration</title><script src="https://cdn.tailwindcss.com"></script></head><body class="min-h-screen bg-gray-100 flex items-center justify-center">';
+    echo '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Admin Registration</title><script src="https://cdn.tailwindcss.com"></script></head><body class="min-h-screen bg-gray-100 flex items-center justify-center">';
     echo '<div class="w-full max-w-sm bg-white p-6 rounded shadow">';
     echo '<h1 class="text-xl font-bold mb-4">First Admin Registration</h1>';
     if ($err) echo '<div class="mb-3 p-2 bg-red-100 text-red-700 rounded">'.htmlspecialchars($err, ENT_QUOTES).'</div>';
@@ -85,7 +85,7 @@ if (!$isLogged && $adminCount === 0) {
 }
 
 if (!$isLogged) {
-    echo '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">\n<title>Admin Login</title><script src="https://cdn.tailwindcss.com"></script></head><body class="min-h-screen bg-gray-100 flex items-center justify-center">';
+    echo '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Admin Login</title><script src="https://cdn.tailwindcss.com"></script></head><body class="min-h-screen bg-gray-100 flex items-center justify-center">';
     echo '<div class="w-full max-w-sm bg-white p-6 rounded shadow">';
     echo '<h1 class="text-xl font-bold mb-4">Admin Login</h1>';
     if ($err) echo '<div class="mb-3 p-2 bg-red-100 text-red-700 rounded">'.htmlspecialchars($err, ENT_QUOTES).'</div>';
@@ -104,6 +104,7 @@ $winners = $users->getTopWinners();
 $losers = $users->getTopLosers();
 $daily = (int)$app->setting('daily_points', $app->env('DAILY_POINTS', 100));
 $dice = (int)$app->setting('dice_cost', $app->env('DICE_COST', 5));
+$allUsers = $pdo->query('SELECT id, username, first_name, last_name, points, points_today, total_won, total_lost, last_daily_reset, created_at, updated_at FROM users ORDER BY id DESC')->fetchAll();
 
 ?><!doctype html>
 <html>
@@ -112,6 +113,9 @@ $dice = (int)$app->setting('dice_cost', $app->env('DICE_COST', 5));
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Admin Dashboard</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
 </head>
 <body class="bg-gray-100 min-h-screen">
   <div class="max-w-6xl mx-auto p-4">
@@ -158,6 +162,54 @@ $dice = (int)$app->setting('dice_cost', $app->env('DICE_COST', 5));
         <button class="bg-green-600 text-white rounded py-2">Save</button>
       </form>
     </div>
+
+    <div class="bg-white p-4 rounded shadow mt-6">
+      <h2 class="font-semibold mb-3">Users</h2>
+      <div class="overflow-auto">
+        <table id="usersTable" class="display" style="width:100%">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Username</th>
+              <th>Name</th>
+              <th>Points</th>
+              <th>Daily</th>
+              <th>Total Won</th>
+              <th>Total Lost</th>
+              <th>Last Reset</th>
+              <th>Created</th>
+              <th>Updated</th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php foreach ($allUsers as $u): $name = $u['username'] ?: trim(($u['first_name'] ?? '') . ' ' . ($u['last_name'] ?? '')); ?>
+              <tr>
+                <td><?php echo (int)$u['id']; ?></td>
+                <td><?php echo htmlspecialchars((string)($u['username'] ?? ''), ENT_QUOTES); ?></td>
+                <td><?php echo htmlspecialchars($name, ENT_QUOTES); ?></td>
+                <td><?php echo (int)$u['points']; ?></td>
+                <td><?php echo (int)$u['points_today']; ?></td>
+                <td><?php echo (int)$u['total_won']; ?></td>
+                <td><?php echo (int)$u['total_lost']; ?></td>
+                <td><?php echo htmlspecialchars((string)($u['last_daily_reset'] ?? ''), ENT_QUOTES); ?></td>
+                <td><?php echo htmlspecialchars((string)($u['created_at'] ?? ''), ENT_QUOTES); ?></td>
+                <td><?php echo htmlspecialchars((string)($u['updated_at'] ?? ''), ENT_QUOTES); ?></td>
+              </tr>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
+      </div>
+    </div>
   </div>
 </body>
+<script>
+  $(function(){
+    if ($('#usersTable').length) {
+      $('#usersTable').DataTable({
+        pageLength: 10,
+        order: [[0,'desc']]
+      });
+    }
+  });
+</script>
 </html>
