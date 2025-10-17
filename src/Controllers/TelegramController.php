@@ -53,18 +53,8 @@ class TelegramController
             'withdraw' => '/withdraw',
         ];
         $low = strtolower(trim($text));
-        $originalText = $text;
         if (isset($map[$low])) {
             $text = $map[$low];
-            error_log("Button mapped: '{$originalText}' → '{$text}'");
-        }
-        
-        // DEBUG: Log unmapped button text
-        if (!str_starts_with($text, '/') && !isset($map[$low])) {
-            error_log("Unmapped button text: '{$text}' (lowercase: '{$low}')");
-            // Send debug message to user (remove this after testing)
-            $this->tg->sendMessage($chatId, "🔧 DEBUG: Received '{$text}' (lowercase: '{$low}')\nButton not mapped. Use /help to see commands.");
-            return; // Stop processing
         }
 
         if (preg_match('/^\/start$/i', $text)) {

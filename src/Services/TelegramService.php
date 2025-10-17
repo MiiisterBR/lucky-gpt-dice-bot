@@ -16,18 +16,34 @@ class TelegramService
         ]);
     }
 
-    public function sendMessage(int|string $chatId, string $text, ?array $replyMarkup = null): array
+    public function sendMessage(int|string $chatId, string $text, ?array $replyMarkup = null, bool $markdown = false): array
     {
         $payload = [
             'chat_id' => $chatId,
             'text' => $text,
-            'parse_mode' => 'Markdown'
         ];
+        
+        // Only use parse_mode if explicitly requested and text doesn't have problematic characters
+        if ($markdown) {
+            $payload['parse_mode'] = 'Markdown';
+        }
+        
         if ($replyMarkup) {
             $payload['reply_markup'] = json_encode($replyMarkup, JSON_UNESCAPED_UNICODE);
         }
-        $res = $this->client->post('sendMessage', ['form_params' => $payload]);
-        return json_decode((string)$res->getBody(), true) ?? [];
+        
+        try {
+            $res = $this->client->post('sendMessage', ['form_params' => $payload]);
+            return json_decode((string)$res->getBody(), true) ?? [];
+        } catch (\GuzzleHttp\Exception\ClientException $e) {
+            // If markdown parsing fails, retry without markdown
+            if ($markdown && str_contains($e->getMessage(), "can't parse entities")) {
+                unset($payload['parse_mode']);
+                $res = $this->client->post('sendMessage', ['form_params' => $payload]);
+                return json_decode((string)$res->getBody(), true) ?? [];
+            }
+            throw $e;
+        }
     }
 
     public function sendDice(int|string $chatId): array
