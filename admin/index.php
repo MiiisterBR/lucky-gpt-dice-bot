@@ -66,7 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt = $pdo->query('SELECT id FROM users');
         $ids = $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
         foreach ($ids as $uid) {
-            $tg->sendMessage((int)$uid, $text, $tg->defaultKeyboard());
+            $tg->sendMessage((int)$uid, $text);
             usleep(50000);
         }
         if (!empty($latest['id'])) {

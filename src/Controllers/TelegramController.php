@@ -23,113 +23,126 @@ class TelegramController
     {
         $update = json_decode($raw, true) ?? [];
         $message = $update['message'] ?? null;
-        $callback = $update['callback_query'] ?? null;
+        if (!$message) { return; }
 
-        if ($message) {
-            $chatId = $message['chat']['id'];
-            $from = $message['from'] ?? [];
-            $user = $this->users->upsertUser([
-                'id' => $from['id'] ?? 0,
-                'username' => $from['username'] ?? null,
-                'first_name' => $from['first_name'] ?? null,
-                'last_name' => $from['last_name'] ?? null,
-            ]);
+        $chatId = $message['chat']['id'];
+        $from = $message['from'] ?? [];
+        $user = $this->users->upsertUser([
+            'id' => $from['id'] ?? 0,
+            'username' => $from['username'] ?? null,
+            'first_name' => $from['first_name'] ?? null,
+            'last_name' => $from['last_name'] ?? null,
+        ]);
 
-            // daily reset
-            $dailyPoints = (int)($this->app->setting('daily_points', $this->app->env('DAILY_POINTS', 100)));
-            $lastReset = $user['last_daily_reset'] ?? null;
-            if (!$lastReset || date('Y-m-d') !== (string)$lastReset) {
-                $this->users->resetDaily((int)$user['id'], $dailyPoints);
-            }
+        if (isset($message['dice'])) { return; }
 
-            $text = trim((string)($message['text'] ?? ''));
-            if (preg_match('/^\/start/', $text)) {
-                $this->tg->sendMessage($chatId, "Welcome! Use the buttons below to play.", $this->tg->defaultKeyboard());
+        $text = trim((string)($message['text'] ?? ''));
+        if ($text === '') { return; }
+
+        $userId = (int)$user['id'];
+
+        if (preg_match('/^\/start$/i', $text)) {
+            $this->tg->sendMessage($chatId, "Welcome to Golden Dice v2! Use /help to see all commands.");
+            return;
+        }
+        if (preg_match('/^\/help$/i', $text)) {
+            $help = "Commands:\n".
+                    "/status - Show your coins, wallet, and session progress\n".
+                    "/startgame - Start a new game session (first roll happens immediately)\n".
+                    "/next - Roll the next dice (up to 7)\n".
+                    "/wallet - Show your wallet and how to set it\n".
+                    "/wallet <ADDRESS> - Set/Update your Worldcoin wallet\n".
+                    "/deposit - Show the deposit address\n".
+                    "/withdraw <AMOUNT> - Create a withdraw request";
+            $this->tg->sendMessage($chatId, $help);
+            return;
+        }
+        if (preg_match('/^\/status$/i', $text)) {
+            $this->sendStatus($chatId, $userId);
+            return;
+        }
+        if (preg_match('/^\/leaderboard$/i', $text)) {
+            $this->sendLeaderboards($chatId);
+            return;
+        }
+        if (preg_match('/^\/wallet\s+(.+)/i', $text, $m)) {
+            $addr = trim($m[1]);
+            $this->users->setWalletAddress($userId, $addr);
+            $this->tg->sendMessage($chatId, "Wallet address updated.");
+            return;
+        }
+        if (preg_match('/^\/wallet$/i', $text)) {
+            $u = $this->users->getById($userId);
+            $wa = $u['wallet_address'] ?? '';
+            $msg = $wa ? ("Your wallet address: " . $wa . "\nSend /wallet NEW_ADDRESS to update it.")
+                        : "No wallet set. Send /wallet YOUR_ADDRESS to set it.";
+            $this->tg->sendMessage($chatId, $msg);
+            return;
+        }
+        if (preg_match('/^\/deposit$/i', $text)) {
+            $addr = (string)$this->app->setting('deposit_wallet_address', '');
+            $this->tg->sendMessage($chatId, $addr ? ("Deposit address: " . $addr) : "Deposit address is not configured yet.");
+            return;
+        }
+        if (preg_match('/^\/withdraw\s+(\d+)/i', $text, $m)) {
+            $amount = (int)$m[1];
+            $coins = $this->users->getCoins($userId);
+            $minBal = (int)$this->app->setting('withdraw_min_balance', 1001);
+            if ($coins < $minBal) {
+                $this->tg->sendMessage($chatId, "You need at least {$minBal} World Coins to withdraw.");
                 return;
             }
-            if (preg_match('/^\/guess\s+(\d{3})$/', $text, $m)) {
-                $res = $this->game->makeGuess((int)$user['id'], $m[1]);
-                $this->tg->sendMessage($chatId, $res['message'] ?? 'Done', $this->tg->defaultKeyboard());
+            if ($amount <= 0) {
+                $this->tg->sendMessage($chatId, "Invalid amount.");
                 return;
             }
-            if ($text === '/leaderboard') {
-                $this->sendLeaderboards($chatId);
+            if ($amount > $coins) {
+                $this->tg->sendMessage($chatId, "Insufficient balance. You have {$coins} World Coins.");
                 return;
             }
-            if (preg_match('/^\/status/', $text)) {
-                $this->sendStatus($chatId, (int)$user['id']);
+            $reqId = $this->game->createWithdrawRequest($userId, $amount);
+            $this->game->processWithdrawTest($reqId, true);
+            $this->tg->sendMessage($chatId, "Withdrawal request submitted for {$amount} World Coins. Status: success.");
+            return;
+        }
+        if (preg_match('/^\/withdraw$/i', $text)) {
+            $this->tg->sendMessage($chatId, "Send amount like: /withdraw 250");
+            return;
+        }
+        if (preg_match('/^\/startgame$/i', $text)) {
+            if ($this->isQuietHours()) {
+                $s = (string)$this->app->setting('quiet_hours_start', '23:00');
+                $e = (string)$this->app->setting('quiet_hours_end', '00:00');
+                $this->tg->sendMessage($chatId, "Bot is inactive from {$s} to {$e}. Come back after {$e}.");
                 return;
             }
-            if (isset($message['dice']) && !($message['from']['is_bot'] ?? false)) {
-                $userId = (int)$user['id'];
-                $diceCost = (int)($this->app->setting('dice_cost', $this->app->env('DICE_COST', 5)));
-                $remaining = $this->game->remainingRollsToday($userId);
-                if ($remaining <= 0) {
-                    $this->tg->sendMessage($chatId, 'تلاش‌های امروز به پایان رسیده است. فردا دوباره امتحان کن یا از دکمه Start استفاده کن.', $this->tg->defaultKeyboard());
-                    return;
-                }
-                $freshUser = $this->users->getById($userId);
-                if ((int)$freshUser['points_today'] < $diceCost) {
-                    $this->tg->sendMessage($chatId, 'امتیاز روزانه کافی نیست.', $this->tg->defaultKeyboard());
-                    return;
-                }
-                $value = (int)($message['dice']['value'] ?? 0);
-                $msgId = (int)($message['message_id'] ?? 0);
-                $this->game->recordUserDiceRoll($userId, $msgId, $value, $diceCost);
-                $used = $this->users->countRollsToday($userId);
-                $left = max(0, 3 - $used);
-                $stage = ['اول', 'دوم', 'سوم'];
-                $label = $stage[min($used, 3) - 1] ?? (string)$used;
-                $txt = "تلاش {$label} ثبت شد. نتیجه تاس: {$value}\nبا‌قی‌مانده تلاش‌ها: {$left}";
-                if ($left === 0) {
-                    $txt .= "\nتلاش‌های امروز تمام شد. فردا دوباره امتحان کن یا با دکمه Start شروع کن.";
-                }
-                $this->tg->sendMessage($chatId, $txt, $this->tg->defaultKeyboard());
+            $active = $this->game->getActiveSession($userId);
+            if ($active) {
+                $this->tg->sendMessage($chatId, "You already have an active session. Send /next to continue (" . ((int)$active['rolls_count']) . "/7). ");
                 return;
             }
-            // default help
-            $this->tg->sendMessage($chatId, "Commands: /start, /guess 123, /leaderboard, /status", $this->tg->defaultKeyboard());
+            $model = (string)$this->app->setting('openai_model', $this->app->env('OPENAI_MODEL', 'gpt-5'));
+            $openai = new OpenAIService((string)$this->app->env('OPENAI_API_KEY', ''));
+            $golden = $this->game->getOrCreateDailyGolden($openai, $model);
+            if (!$golden) { $this->tg->sendMessage($chatId, "Golden number is not ready yet."); return; }
+            $session = $this->game->startSession($userId, (int)$golden['id']);
+            $sleepMs = (int)$this->app->setting('sleep_ms_between_rolls', $this->app->env('SLEEP_MS_BETWEEN_ROLLS', 3000));
+            $res = $this->game->rollNext((int)$session['id'], $userId, $chatId, $this->tg, $sleepMs);
+            $this->sendProgressMessage($chatId, $res, $model);
+            return;
+        }
+        if (preg_match('/^\/next$/i', $text)) {
+            $active = $this->game->getActiveSession($userId);
+            if (!$active) { $this->tg->sendMessage($chatId, "No active session. Use /startgame"); return; }
+            $sleepMs = (int)$this->app->setting('sleep_ms_between_rolls', $this->app->env('SLEEP_MS_BETWEEN_ROLLS', 3000));
+            $model = (string)$this->app->setting('openai_model', $this->app->env('OPENAI_MODEL', 'gpt-5'));
+            $res = $this->game->rollNext((int)$active['id'], $userId, $chatId, $this->tg, $sleepMs);
+            $this->sendProgressMessage($chatId, $res, $model);
             return;
         }
 
-        if ($callback) {
-            $data = $callback['data'] ?? '';
-            $from = $callback['from'] ?? [];
-            $userId = (int)($from['id'] ?? 0);
-            $chatId = $callback['message']['chat']['id'] ?? $userId;
-
-            $this->users->upsertUser([
-                'id' => $userId,
-                'username' => $from['username'] ?? null,
-                'first_name' => $from['first_name'] ?? null,
-                'last_name' => $from['last_name'] ?? null,
-            ]);
-
-            $dailyPoints = (int)($this->app->setting('daily_points', $this->app->env('DAILY_POINTS', 100)));
-            $user = $this->users->getById($userId);
-            if (!$user || !$user['last_daily_reset'] || date('Y-m-d') !== (string)$user['last_daily_reset']) {
-                $this->users->resetDaily($userId, $dailyPoints);
-            }
-
-            if ($data === 'start') {
-                $diceCost = (int)($this->app->setting('dice_cost', $this->app->env('DICE_COST', 5)));
-                $res = $this->game->rollIfPossible($userId, $chatId, $this->tg, $diceCost);
-                $msg = $res['ok'] ? ('Rolled. Result: ' . ($res['result'] ?? '?')) : ($res['message'] ?? 'Error');
-                $this->tg->sendMessage($chatId, $msg, $this->tg->defaultKeyboard());
-                return;
-            }
-            if ($data === 'leaderboard') {
-                $this->sendLeaderboards($chatId);
-                return;
-            }
-            if ($data === 'status') {
-                $this->sendStatus($chatId, $userId);
-                return;
-            }
-
-            $this->tg->sendMessage($chatId, 'Unknown action', $this->tg->defaultKeyboard());
-            return;
-        }
+        $this->tg->sendMessage($chatId, "Unknown command. Use /help");
+        return;
     }
 
     private function sendLeaderboards(int|string $chatId): void
@@ -147,21 +160,46 @@ class TelegramController
             return implode("\n", $lines);
         };
 
-        $text = $fmt($w, 'Top 7 Winners', 'points') . "\n\n" . $fmt($l, 'Top 7 Unlucky', 'total_lost');
-        $this->tg->sendMessage($chatId, $text, $this->tg->defaultKeyboard());
+        $text = $fmt($w, 'Top 7 Winners', 'coins') . "\n\n" . $fmt($l, 'Top 7 Lowest Balances', 'coins');
+        $this->tg->sendMessage($chatId, $text);
     }
 
     private function sendStatus(int|string $chatId, int $userId): void
     {
         $u = $this->users->getById($userId);
-        $remaining = $this->game->remainingRollsToday($userId);
-        $lastGuess = $this->users->getLastGuess($userId);
-        $lg = $lastGuess ? ($lastGuess['guess'] . ($lastGuess['correct'] ? ' ✅' : ' ❌')) : '—';
+        $coins = (int)($u['coins'] ?? 0);
+        $wallet = (string)($u['wallet_address'] ?? '—');
+        $s = $this->game->getActiveSession($userId);
+        $progress = $s ? ((int)$s['rolls_count'] . '/7, digits: ' . implode(', ', str_split((string)($s['result_digits'] ?? '')))) : 'No active session';
+        $text = "World Coins: {$coins}\nWallet: {$wallet}\nSession: {$progress}";
+        $this->tg->sendMessage($chatId, $text);
+    }
 
-        $text = "Points: " . (int)$u['points'] . "\n" .
-                "Daily points left: " . (int)$u['points_today'] . "\n" .
-                "Remaining rolls today: " . $remaining . "\n" .
-                "Last guess: " . $lg;
-        $this->tg->sendMessage($chatId, $text, $this->tg->defaultKeyboard());
+    private function sendProgressMessage(int|string $chatId, array $res, string $model): void
+    {
+        $digits = implode(', ', str_split((string)($res['result_digits'] ?? '')));
+        $msg = "Roll {$res['rolls_count']}/7: {$res['last_roll']}\nProgress: {$digits}";
+        if (!empty($res['finished'])) {
+            $msg .= "\nFinished. Matched digits: {$res['matchCount']}\nAward: {$res['award']} World Coins";
+            if (!empty($res['exact'])) {
+                $openai = new OpenAIService((string)$this->app->env('OPENAI_API_KEY', ''));
+                if (method_exists($openai, 'generateCongratsText')) {
+                    $msg .= "\n" . $openai->generateCongratsText($model, (string)($res['result_digits'] ?? ''));
+                }
+            }
+        }
+        $this->tg->sendMessage($chatId, $msg);
+    }
+
+    private function isQuietHours(): bool
+    {
+        $start = (string)$this->app->setting('quiet_hours_start', '23:00');
+        $end = (string)$this->app->setting('quiet_hours_end', '00:00');
+        $now = date('H:i');
+        if ($start === $end) return false;
+        if ($start < $end) {
+            return ($now >= $start && $now < $end);
+        }
+        return ($now >= $start || $now < $end);
     }
 }

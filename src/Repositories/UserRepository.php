@@ -68,4 +68,23 @@ class UserRepository
     {
         return null;
     }
+
+    public function setWalletAddress(int $userId, string $address): void
+    {
+        $stmt = $this->pdo->prepare('UPDATE users SET wallet_address = :w WHERE id = :id');
+        $stmt->execute([':w' => $address, ':id' => $userId]);
+    }
+
+    public function deductCoins(int $userId, int $amount): void
+    {
+        $stmt = $this->pdo->prepare('UPDATE users SET coins = GREATEST(coins - :a, 0) WHERE id = :id');
+        $stmt->execute([':a' => $amount, ':id' => $userId]);
+    }
+
+    public function getCoins(int $userId): int
+    {
+        $stmt = $this->pdo->prepare('SELECT coins FROM users WHERE id = :id');
+        $stmt->execute([':id' => $userId]);
+        return (int)($stmt->fetchColumn() ?: 0);
+    }
 }

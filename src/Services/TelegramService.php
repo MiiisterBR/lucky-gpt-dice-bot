@@ -16,16 +16,13 @@ class TelegramService
         ]);
     }
 
-    public function sendMessage(int|string $chatId, string $text, array $buttons = []): array
+    public function sendMessage(int|string $chatId, string $text): array
     {
         $payload = [
             'chat_id' => $chatId,
             'text' => $text,
             'parse_mode' => 'Markdown'
         ];
-        if (!empty($buttons)) {
-            $payload['reply_markup'] = json_encode(['inline_keyboard' => $buttons]);
-        }
         $res = $this->client->post('sendMessage', ['form_params' => $payload]);
         return json_decode((string)$res->getBody(), true) ?? [];
     }
@@ -37,13 +34,5 @@ class TelegramService
         ]]);
         return json_decode((string)$res->getBody(), true) ?? [];
     }
-
-    public function defaultKeyboard(): array
-    {
-        return [[
-            ['text' => 'Start', 'callback_data' => 'start'],
-            ['text' => 'Leaderboard', 'callback_data' => 'leaderboard'],
-            ['text' => 'Status', 'callback_data' => 'status']
-        ]];
-    }
 }
+

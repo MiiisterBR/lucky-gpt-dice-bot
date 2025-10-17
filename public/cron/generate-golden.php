@@ -18,7 +18,7 @@ $game = new GameService($pdo, $usersRepo, $goldens);
 
 $model = $app->setting('openai_model', $app->env('OPENAI_MODEL', 'gpt-5'));
 $openai = new OpenAIService($app->env('OPENAI_API_KEY', ''));
-$latest = $game->getOrCreateGolden($openai, $model);
+$latest = $game->getOrCreateDailyGolden($openai, $model);
 
 if ($latest && (int)$latest['announced'] === 0) {
     $tg = new TelegramService($app->env('TELEGRAM_BOT_TOKEN', ''));
@@ -26,8 +26,8 @@ if ($latest && (int)$latest['announced'] === 0) {
     $stmt = $pdo->query('SELECT id FROM users');
     $ids = $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
     foreach ($ids as $uid) {
-        $tg->sendMessage((int)$uid, $text, $tg->defaultKeyboard());
-        usleep(50000); // basic rate limiting
+        $tg->sendMessage((int)$uid, $text);
+        usleep(50000);
     }
     $goldens->markAnnounced((int)$latest['id']);
 }
