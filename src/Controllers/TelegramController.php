@@ -56,8 +56,35 @@ class TelegramController
                 $this->sendLeaderboards($chatId);
                 return;
             }
-            if ($text === '/status') {
+            if (preg_match('/^\/status/', $text)) {
                 $this->sendStatus($chatId, (int)$user['id']);
+                return;
+            }
+            if (isset($message['dice']) && !($message['from']['is_bot'] ?? false)) {
+                $userId = (int)$user['id'];
+                $diceCost = (int)($this->app->setting('dice_cost', $this->app->env('DICE_COST', 5)));
+                $remaining = $this->game->remainingRollsToday($userId);
+                if ($remaining <= 0) {
+                    $this->tg->sendMessage($chatId, 'تلاش‌های امروز به پایان رسیده است. فردا دوباره امتحان کن یا از دکمه Start استفاده کن.', $this->tg->defaultKeyboard());
+                    return;
+                }
+                $freshUser = $this->users->getById($userId);
+                if ((int)$freshUser['points_today'] < $diceCost) {
+                    $this->tg->sendMessage($chatId, 'امتیاز روزانه کافی نیست.', $this->tg->defaultKeyboard());
+                    return;
+                }
+                $value = (int)($message['dice']['value'] ?? 0);
+                $msgId = (int)($message['message_id'] ?? 0);
+                $this->game->recordUserDiceRoll($userId, $msgId, $value, $diceCost);
+                $used = $this->users->countRollsToday($userId);
+                $left = max(0, 3 - $used);
+                $stage = ['اول', 'دوم', 'سوم'];
+                $label = $stage[min($used, 3) - 1] ?? (string)$used;
+                $txt = "تلاش {$label} ثبت شد. نتیجه تاس: {$value}\nبا‌قی‌مانده تلاش‌ها: {$left}";
+                if ($left === 0) {
+                    $txt .= "\nتلاش‌های امروز تمام شد. فردا دوباره امتحان کن یا با دکمه Start شروع کن.";
+                }
+                $this->tg->sendMessage($chatId, $txt, $this->tg->defaultKeyboard());
                 return;
             }
             // default help

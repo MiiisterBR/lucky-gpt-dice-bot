@@ -22,16 +22,11 @@ $latest = $game->getOrCreateGolden($openai, $model);
 
 if ($latest && (int)$latest['announced'] === 0) {
     $tg = new TelegramService($app->env('TELEGRAM_BOT_TOKEN', ''));
+    $text = $openai->generateAnnouncementText($model);
     $stmt = $pdo->query('SELECT id FROM users');
     $ids = $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
     foreach ($ids as $uid) {
-        $tg->sendMessage((int)$uid, 'A new golden number has been created! Try to guess it!', [
-            [
-                ['text' => 'Start', 'callback_data' => 'start'],
-                ['text' => 'Leaderboard', 'callback_data' => 'leaderboard'],
-                ['text' => 'Status', 'callback_data' => 'status']
-            ]
-        ]);
+        $tg->sendMessage((int)$uid, $text, $tg->defaultKeyboard());
         usleep(50000); // basic rate limiting
     }
     $goldens->markAnnounced((int)$latest['id']);

@@ -20,6 +20,13 @@ $game = new GameService($pdo, $users, $goldens);
 $controller = new TelegramController($app, $tg, $game, $users, $goldens);
 
 $raw = file_get_contents('php://input') ?: '{}';
+if (filter_var($app->env('LOG_REQUESTS', 'false'), FILTER_VALIDATE_BOOLEAN)) {
+    $dir = dirname(__DIR__) . '/storage/logs';
+    if (!is_dir($dir)) { @mkdir($dir, 0777, true); }
+    $file = $dir . '/telegram-' . date('Y-m-d') . '.log';
+    $line = '[' . date('Y-m-d H:i:s') . "]\t" . $raw . "\n";
+    @file_put_contents($file, $line, FILE_APPEND);
+}
 $controller->handleWebhook($raw);
 
 echo 'OK';

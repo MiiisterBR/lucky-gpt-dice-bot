@@ -43,4 +43,32 @@ class OpenAIService
         }
         return (string)random_int(100, 999);
     }
+
+    public function generateAnnouncementText(string $model = 'gpt-5'): string
+    {
+        $fallback = 'عدد طلایی جدید ساخته شد! شانست رو امتحان کن؛ شاید با سه تا تاس بتونی برنده بشی. الان حدست رو با /guess 123 بفرست.';
+        try {
+            $res = $this->client->post('chat/completions', [
+                'headers' => [
+                    'Authorization' => 'Bearer ' . $this->apiKey,
+                    'Content-Type' => 'application/json'
+                ],
+                'json' => [
+                    'model' => $model,
+                    'messages' => [
+                        ['role' => 'user', 'content' => "به فارسی یک پیام کوتاه و هیجان‌انگیز بساز که به کاربر بگوید عدد طلایی جدید ساخته شده و بهتر است شانسش را امتحان کند. اشاره مختصر به ‘سه تا تاس’ و دستور /guess 123 داشته باشد. فقط متن پیام را بده."],
+                    ],
+                    'temperature' => 0.9,
+                    'max_tokens' => 60,
+                ]
+            ]);
+            $data = json_decode((string)$res->getBody(), true);
+            $txt = trim($data['choices'][0]['message']['content'] ?? '');
+            if ($txt !== '') {
+                return $txt;
+            }
+        } catch (\Throwable $e) {
+        }
+        return $fallback;
+    }
 }

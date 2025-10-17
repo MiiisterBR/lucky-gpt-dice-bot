@@ -7,6 +7,7 @@ use App\Repositories\UserRepository;
 use App\Repositories\GoldenRepository;
 use App\Services\GameService;
 use App\Services\OpenAIService;
+use App\Services\TelegramService;
 
 $app = new App(dirname(__DIR__));
 $pdo = $app->pdo();
@@ -59,7 +60,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($action === 'generate' && $isLogged) {
         $model = $app->setting('openai_model', $app->env('OPENAI_MODEL', 'gpt-5'));
         $openai = new OpenAIService($app->env('OPENAI_API_KEY', ''));
-        $game->getOrCreateGolden($openai, $model);
+        $latest = $game->getOrCreateGolden($openai, $model);
+        $tg = new TelegramService($app->env('TELEGRAM_BOT_TOKEN', ''));
+        $text = $openai->generateAnnouncementText($model);
+        $stmt = $pdo->query('SELECT id FROM users');
+        $ids = $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
+        foreach ($ids as $uid) {
+            $tg->sendMessage((int)$uid, $text, $tg->defaultKeyboard());
+            usleep(50000);
+        }
+        if (!empty($latest['id'])) {
+            $goldens->markAnnounced((int)$latest['id']);
+        }
     } elseif ($action === 'update_settings' && $isLogged) {
         $daily = (string)max(0, (int)($_POST['daily_points'] ?? 100));
         $dice = (string)max(1, (int)($_POST['dice_cost'] ?? 5));

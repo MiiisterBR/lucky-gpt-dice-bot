@@ -105,4 +105,17 @@ class GameService
             'losers' => $this->users->getTopLosers(7),
         ];
     }
+
+    public function recordUserDiceRoll(int $userId, ?int $telegramMessageId, int $result, int $diceCost): void
+    {
+        $this->users->decrementPointsToday($userId, $diceCost);
+        $this->users->addTotalLost($userId, $diceCost);
+        $stmt = $this->pdo->prepare('INSERT INTO rolls (user_id, telegram_message_id, result, cost) VALUES (:u, :m, :r, :c)');
+        $stmt->execute([
+            ':u' => $userId,
+            ':m' => $telegramMessageId,
+            ':r' => $result,
+            ':c' => $diceCost,
+        ]);
+    }
 }

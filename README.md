@@ -19,130 +19,137 @@ This project is a Telegram dice game bot with daily points and an hourly “Gold
 
 ## Folder Structure
 ```
-telegram-game-bot/
-├─ public/
-│  └─ game.php                  # Telegram webhook entry
-│  └─ api/roll.php              # Internal roll endpoint
-│  └─ cron/generate-golden.php  # Hourly golden number cron
-├─ src/
-│  ├─ App.php                   # bootstrap / env / PDO / settings
-│  ├─ Controllers/TelegramController.php
-│  ├─ Services/{Telegram,OpenAI,Game,User}Service.php
-│  ├─ Repositories/{User,Golden}Repository.php
-│  └─ Models/{User,Roll,Guess}.php
-├─ admin/index.php              # Admin panel (Tailwind)
-├─ migrations/game.sql          # DB schema and seeds
-├─ .env.example
-├─ composer.json
-└─ README.md
+public/
+  game.php
+  cron/generate-golden.php
+src/
+  App.php, Controllers/, Services/, Repositories/, Models/
+admin/
+  index.php
+migrations/
+  game.sql
+.env.example
+composer.json
+README.md
 ```
 
 ## Step-by-step Setup
 
-### 1) Upload/Clone code on your host
-- Place the project under your domain path (e.g., `mindroll.misterbr.ir`).
-- Prefer setting your web server docroot to the `public/` directory.
+1) Upload/Clone the project on your host (prefer docroot → `public/`).
 
-### 2) Install dependencies
+2) Install dependencies
 ```bash
 composer install
 ```
 
-### 3) Create database and import schema
-- Create database (e.g., `telegram_game`).
-- Import `migrations/game.sql` using phpMyAdmin or CLI:
+3) Database (v2 schema)
+- IMPORTANT: v2 schema is different and will DROP existing tables defined in the migration file.
+- Backup if you need old data.
+- Import `migrations/game.sql` via phpMyAdmin or CLI:
 ```bash
 mysql -u <DB_USER> -p -h <DB_HOST> <DB_NAME> < migrations/game.sql
 ```
 
-### 4) Configure environment
-- Copy `.env.example` to `.env` and fill values:
+4) Configure environment
+- Copy `.env.example` → `.env` and fill values:
 ```
-TELEGRAM_BOT_TOKEN=123456:ABCDEF...
+TELEGRAM_BOT_TOKEN=123456:ABC...
 OPENAI_API_KEY=sk-...
 OPENAI_MODEL=gpt-5
-
 DB_HOST=localhost
 DB_NAME=telegram_game
 DB_USER=root
 DB_PASS=
-
 ADMIN_PASSWORD_HASH=
-
-DAILY_POINTS=100
-DICE_COST=5
+DAILY_POINTS=100   # legacy, not used in v2 logic
+DICE_COST=0        # recommended 0 for v2; scores award coins
+LOG_REQUESTS=false
 ```
-- Optional admin via `.env`: generate a hash to allow username `admin` to login:
+- `ADMIN_PASSWORD_HASH` (optional) enables login with username `admin`.
+  Generate hash:
 ```bash
 php -r "echo password_hash('YourStrongPassword', PASSWORD_BCRYPT), PHP_EOL;"
 ```
-Set the output into `ADMIN_PASSWORD_HASH`.
 
-### 5) Configure web server & HTTPS
-- If using Apache, enable `mod_rewrite` and `AllowOverride All`.
-- Recommended: Docroot → `public/`. We also provide `/.htaccess` and `public/.htaccess` for:
-  - Force HTTPS
-  - Remove `www`
-  - Disable directory listing
-  - Block sensitive files (`.env`, `composer.json`, etc.)
+5) Web server & HTTPS
+- Apache: enable `mod_rewrite`, set `AllowOverride All`.
+- Docroot:
+  - If docroot = `public/` → webhook URL ends with `/game.php`.
+  - If docroot = project root → webhook URL ends with `/public/game.php`.
+- `.htaccess` already enforces HTTPS, removes www, disables directory listing.
 
-### 6) Create bot in BotFather and set webhook
-1. In Telegram, open `@BotFather`.
-2. Send `/newbot` and follow prompts to get your bot token.
-3. Set the webhook URL (example domain: `mindroll.misterbr.ir`):
-   - If docroot is `public/`:
-     ```
-     https://api.telegram.org/bot<YOUR_TOKEN>/setWebhook?url=https://mindroll.misterbr.ir/game.php&drop_pending_updates=true
-     ```
-   - If docroot is project root:
-     ```
-     https://api.telegram.org/bot<YOUR_TOKEN>/setWebhook?url=https://mindroll.misterbr.ir/public/game.php&drop_pending_updates=true
-     ```
-4. (Optional) Set bot description and commands in BotFather.
-   - In BotFather:
-     - `/setdescription` → paste a short description, e.g.:
-       > Roll the dice, earn points daily, and guess the hourly golden number!
-     - `/setcommands` → paste the commands list:
-       ```
-       start - Start the game and show buttons
-       leaderboard - Show top players
-       status - Show your points and remaining rolls
-       guess - Guess the golden 3-digit number (e.g. /guess 123)
-       ```
+6) BotFather — create bot & set webhook
+- In Telegram, open `@BotFather` → `/newbot` → get token.
+- Set webhook (example domain `mindroll.misterbr.ir`):
+```
+# docroot = public
+https://api.telegram.org/bot<YOUR_TOKEN>/setWebhook?url=https://mindroll.misterbr.ir/game.php&drop_pending_updates=true
+# docroot = root
+https://api.telegram.org/bot<YOUR_TOKEN>/setWebhook?url=https://mindroll.misterbr.ir/public/game.php&drop_pending_updates=true
+```
+- Set description and commands:
+```
+/help - Show help
+/status - Show coins, session state, wallet
+/startgame - Start a new game session
+/next - Roll next dice (up to 7)
+/wallet - Set or update your Worldcoin wallet address
+/deposit - Show deposit address
+/withdraw - Create a withdrawal request
+```
 
-### 7) First admin registration (first-run)
-- Open the admin panel:
-  - Docroot=root → `https://yourdomain.com/admin`
-  - Docroot=public → move `admin/` under public or use a separate vhost; otherwise, set docroot to project root.
-- If `admin_users` is empty, you’ll see the “First Admin Registration” form.
-- Submit email/password → account is created and you are logged in.
-- After the first admin exists, the registration form will never show again; you’ll see the login form instead.
+7) Admin Panel
+- Visit `/admin`.
+- First‑run registration appears if there is no admin user.
+- Manage settings (in DB `settings`):
+  - `start_coins` (default 1000)
+  - `withdraw_min_balance` (default 1001)
+  - `deposit_wallet_address` (string)
+  - `sleep_ms_between_rolls` (default 3000)
+  - `quiet_hours_start` (23:00), `quiet_hours_end` (00:00)
+  - `score_match_3`, `score_match_5`, `score_all_unordered`, `score_exact_ordered`
+  - `openai_model`
 
-### 8) Cron job (hourly Golden Number)
-- Linux crontab:
+8) Cron (midnight daily)
+- Generate the new 7‑digit Golden Number and broadcast a message: “The new number is ready! Try your luck!”.
 ```cron
-0 * * * * php /path/to/project/public/cron/generate-golden.php > /dev/null 2>&1
-```
-- cPanel → Cron Jobs → add the command above (adjust the path).
-- Windows (Task Scheduler) → create a task to run:
-```
-Program/script: php
-Arguments: C:\\path\\to\\project\\public\\cron\\generate-golden.php
+0 0 * * * php /path/to/project/public/cron/generate-golden.php > /dev/null 2>&1
 ```
 
-### 9) Test the bot
-- Send `/start` to your bot.
-- Try `/guess 123`, `/leaderboard`, `/status`.
-- Tap inline buttons: Start, Leaderboard, Status.
+9) Commands & Game Flow
+- `/startgame` → create a new session for today’s golden number (blocked 23:00–00:00).
+- `/next` → roll next dice (1–6), append to session, sleep `sleep_ms_between_rolls` ms, reply progress until 7 rolls.
+- When 7 values are collected, compute score and add coins (World Coin) to the user:
+  - match 3 digits (unordered) → `score_match_3`
+  - match 5 digits (unordered) → `score_match_5`
+  - all 7 digits, wrong order → `score_all_unordered`
+  - exact 7‑digit ordered match → `score_exact_ordered` (10,000 by default)
+- On exact match, send a congratulatory text generated by ChatGPT.
 
-## Deployment Examples
+10) Wallet / Deposit / Withdraw
+- `/wallet` → ask for Worldcoin address and save/update `wallet_address` in `users`.
+- `/deposit` → show deposit address from settings.
+- `/withdraw` → ask for amount, create `withdraw_requests` row, call a stub API, reply success/failed.
+- Users start with `start_coins=1000`; minimum to withdraw is `withdraw_min_balance=1001`.
 
-### A) Shared hosting (cPanel + Apache)
-- Upload project to your domain folder.
-- If possible, set document root to `project/public/` (Domains → Document Root).
-- Run `composer install` (cPanel Terminal or local then upload `vendor/`).
-- Create DB and import `migrations/game.sql` via phpMyAdmin.
-- Create `.env` from `.env.example` and fill values.
+## Database (summary)
+- `users`: coins, wallet_address (unique), timestamps
+- `golden_numbers`: number (CHAR(7)), valid_date, announced
+- `game_sessions`: user, golden, 7 digits, rolls_count, finished, score_awarded
+- `rolls`: session_id, user_id, result (1–6), step_index
+- `withdraw_requests`: user_id, amount, status, api_response
+- `settings`: key/value
+
+## Notes
+- UX is commands only; do not rely on inline keyboards.
+- You can enable basic webhook logging with `LOG_REQUESTS=true` → logs written to `storage/logs/`.
+- Currency name shown to users: “World Coin”.
+
+## Troubleshooting
+- Webhook not invoked: check `getWebhookInfo`, ensure HTTPS and correct docroot URL.
+- 500 errors: ensure `vendor/` exists, PHP version, DB credentials in `.env`.
+- DB errors: re‑import `migrations/game.sql`; confirm privileges.
+- Cron not running: verify crontab path and PHP binary; check server logs.
 - Set webhook as in step 6.
 - Add Cron in cPanel as in step 8.
 
