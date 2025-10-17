@@ -37,13 +37,14 @@ class TelegramService
         ]]);
         return json_decode((string)$res->getBody(), true) ?? [];
     }
-    public function defaultReplyKeyboard(): array
+    public function defaultReplyKeyboard(bool $hasActiveSession = false): array
     {
+        $primary = $hasActiveSession ? 'Next' : 'Start';
         return [
             'keyboard' => [
-                [ ['text' => '/startgame'], ['text' => '/next'] ],
-                [ ['text' => '/status'], ['text' => '/leaderboard'] ],
-                [ ['text' => '/wallet'], ['text' => '/deposit'], ['text' => '/withdraw 100'] ],
+                [ ['text' => $primary], ['text' => 'Status'] ],
+                [ ['text' => 'Leaderboard'], ['text' => 'Wallet'] ],
+                [ ['text' => 'Deposit'], ['text' => 'Withdraw'] ],
             ],
             'resize_keyboard' => true,
             'one_time_keyboard' => false,

@@ -60,7 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($action === 'generate' && $isLogged) {
         $model = $app->setting('openai_model', $app->env('OPENAI_MODEL', 'gpt-5'));
         $openai = new OpenAIService($app->env('OPENAI_API_KEY', ''));
-        $latest = $game->getOrCreateGolden($openai, $model);
+        $latest = $game->getOrCreateDailyGolden($openai, $model);
         $tg = new TelegramService($app->env('TELEGRAM_BOT_TOKEN', ''));
         $text = $openai->generateAnnouncementText($model);
         $stmt = $pdo->query('SELECT id FROM users');
@@ -73,11 +73,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $goldens->markAnnounced((int)$latest['id']);
         }
     } elseif ($action === 'update_settings' && $isLogged) {
-        $daily = (string)max(0, (int)($_POST['daily_points'] ?? 100));
-        $dice = (string)max(1, (int)($_POST['dice_cost'] ?? 5));
+        $deposit = trim($_POST['deposit_wallet_address'] ?? '');
+        $sleepMs = (string)max(0, (int)($_POST['sleep_ms_between_rolls'] ?? 3000));
+        $quietStart = trim($_POST['quiet_hours_start'] ?? '23:00');
+        $quietEnd = trim($_POST['quiet_hours_end'] ?? '00:00');
+        $score3 = (string)max(0, (int)($_POST['score_match_3'] ?? 10));
+        $score5 = (string)max(0, (int)($_POST['score_match_5'] ?? 15));
+        $scoreUnord = (string)max(0, (int)($_POST['score_all_unordered'] ?? 30));
+        $scoreExact = (string)max(0, (int)($_POST['score_exact_ordered'] ?? 10000));
+        $minBal = (string)max(0, (int)($_POST['withdraw_min_balance'] ?? 1001));
+        $startCoins = (string)max(0, (int)($_POST['start_coins'] ?? 1000));
+        $model = trim($_POST['openai_model'] ?? 'gpt-5');
+
         $st = $pdo->prepare('REPLACE INTO settings (`key`, `value`) VALUES (:k, :v)');
-        $st->execute([':k' => 'daily_points', ':v' => $daily]);
-        $st->execute([':k' => 'dice_cost', ':v' => $dice]);
+        $st->execute([':k' => 'deposit_wallet_address', ':v' => $deposit]);
+        $st->execute([':k' => 'sleep_ms_between_rolls', ':v' => $sleepMs]);
+        $st->execute([':k' => 'quiet_hours_start', ':v' => $quietStart]);
+        $st->execute([':k' => 'quiet_hours_end', ':v' => $quietEnd]);
+        $st->execute([':k' => 'score_match_3', ':v' => $score3]);
+        $st->execute([':k' => 'score_match_5', ':v' => $score5]);
+        $st->execute([':k' => 'score_all_unordered', ':v' => $scoreUnord]);
+        $st->execute([':k' => 'score_exact_ordered', ':v' => $scoreExact]);
+        $st->execute([':k' => 'withdraw_min_balance', ':v' => $minBal]);
+        $st->execute([':k' => 'start_coins', ':v' => $startCoins]);
+        $st->execute([':k' => 'openai_model', ':v' => $model]);
     }
 }
 
@@ -114,8 +133,19 @@ $totalUsers = (int)$pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
 $latest = $goldens->latest();
 $winners = $users->getTopWinners();
 $losers = $users->getTopLosers();
-$daily = (int)$app->setting('daily_points', $app->env('DAILY_POINTS', 100));
-$dice = (int)$app->setting('dice_cost', $app->env('DICE_COST', 5));
+
+$depositAddr = (string)$app->setting('deposit_wallet_address', '');
+$sleepMs = (int)$app->setting('sleep_ms_between_rolls', 3000);
+$quietStart = (string)$app->setting('quiet_hours_start', '23:00');
+$quietEnd = (string)$app->setting('quiet_hours_end', '00:00');
+$score3 = (int)$app->setting('score_match_3', 10);
+$score5 = (int)$app->setting('score_match_5', 15);
+$scoreUnord = (int)$app->setting('score_all_unordered', 30);
+$scoreExact = (int)$app->setting('score_exact_ordered', 10000);
+$minBal = (int)$app->setting('withdraw_min_balance', 1001);
+$startCoins = (int)$app->setting('start_coins', 1000);
+$modelName = (string)$app->setting('openai_model', 'gpt-5');
+
 $allUsers = $pdo->query('SELECT id, username, first_name, last_name, coins, wallet_address, created_at, updated_at FROM users ORDER BY id DESC')->fetchAll();
 
 ?><!doctype html>
@@ -163,15 +193,52 @@ $allUsers = $pdo->query('SELECT id, username, first_name, last_name, coins, wall
 
     <div class="bg-white p-4 rounded shadow">
       <h2 class="font-semibold mb-3">Settings</h2>
-      <form method="post" class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+      <form method="post" class="space-y-4">
         <input type="hidden" name="action" value="update_settings" />
-        <label class="block"> <span class="text-sm text-gray-600">Daily Points</span>
-          <input name="daily_points" value="<?php echo $daily; ?>" class="w-full border rounded p-2" />
-        </label>
-        <label class="block"> <span class="text-sm text-gray-600">Dice Cost</span>
-          <input name="dice_cost" value="<?php echo $dice; ?>" class="w-full border rounded p-2" />
-        </label>
-        <button class="bg-green-600 text-white rounded py-2">Save</button>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <label class="block"> <span class="text-sm text-gray-600">Deposit Wallet Address</span>
+            <input name="deposit_wallet_address" value="<?php echo htmlspecialchars($depositAddr); ?>" class="w-full border rounded p-2" />
+          </label>
+          <label class="block"> <span class="text-sm text-gray-600">Sleep Between Rolls (ms)</span>
+            <input name="sleep_ms_between_rolls" type="number" value="<?php echo $sleepMs; ?>" class="w-full border rounded p-2" />
+          </label>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <label class="block"> <span class="text-sm text-gray-600">Quiet Hours Start (HH:MM)</span>
+            <input name="quiet_hours_start" value="<?php echo htmlspecialchars($quietStart); ?>" class="w-full border rounded p-2" />
+          </label>
+          <label class="block"> <span class="text-sm text-gray-600">Quiet Hours End (HH:MM)</span>
+            <input name="quiet_hours_end" value="<?php echo htmlspecialchars($quietEnd); ?>" class="w-full border rounded p-2" />
+          </label>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <label class="block"> <span class="text-sm text-gray-600">Score: 3 Match</span>
+            <input name="score_match_3" type="number" value="<?php echo $score3; ?>" class="w-full border rounded p-2" />
+          </label>
+          <label class="block"> <span class="text-sm text-gray-600">Score: 5 Match</span>
+            <input name="score_match_5" type="number" value="<?php echo $score5; ?>" class="w-full border rounded p-2" />
+          </label>
+          <label class="block"> <span class="text-sm text-gray-600">Score: All Unordered</span>
+            <input name="score_all_unordered" type="number" value="<?php echo $scoreUnord; ?>" class="w-full border rounded p-2" />
+          </label>
+          <label class="block"> <span class="text-sm text-gray-600">Score: Exact Ordered</span>
+            <input name="score_exact_ordered" type="number" value="<?php echo $scoreExact; ?>" class="w-full border rounded p-2" />
+          </label>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <label class="block"> <span class="text-sm text-gray-600">Start Coins</span>
+            <input name="start_coins" type="number" value="<?php echo $startCoins; ?>" class="w-full border rounded p-2" />
+          </label>
+          <label class="block"> <span class="text-sm text-gray-600">Withdraw Min Balance</span>
+            <input name="withdraw_min_balance" type="number" value="<?php echo $minBal; ?>" class="w-full border rounded p-2" />
+          </label>
+          <label class="block"> <span class="text-sm text-gray-600">OpenAI Model</span>
+            <input name="openai_model" value="<?php echo htmlspecialchars($modelName); ?>" class="w-full border rounded p-2" />
+          </label>
+        </div>
+        <div>
+          <button class="w-full bg-green-600 text-white rounded py-2">Save Settings</button>
+        </div>
       </form>
     </div>
 
