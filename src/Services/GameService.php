@@ -118,6 +118,7 @@ class GameService
             'award' => $award,
             'exact' => $exact,
             'matchCount' => $matchCount,
+            'user_id' => $userId,
         ];
     }
 

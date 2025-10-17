@@ -84,20 +84,46 @@ class TelegramController
         if (preg_match('/^\/wallet\s+(.+)/i', $text, $m)) {
             $addr = trim($m[1]);
             $this->users->setWalletAddress($userId, $addr);
-            $this->tg->sendMessage($chatId, "Wallet address updated.", $this->tg->defaultReplyKeyboard(true));
+            $msg = "✅ Wallet Address Saved!\n";
+            $msg .= str_repeat('─', 30) . "\n";
+            $msg .= "📍 Your Address:\n" . $addr . "\n";
+            $msg .= str_repeat('─', 30) . "\n\n";
+            $msg .= "💡 You can now withdraw your World Coins to this address.";
+            $this->tg->sendMessage($chatId, $msg, $this->tg->defaultReplyKeyboard(true));
             return;
         }
         if (preg_match('/^\/wallet$/i', $text)) {
             $u = $this->users->getById($userId);
             $wa = $u['wallet_address'] ?? '';
-            $msg = $wa ? ("Your wallet address: " . $wa . "\nSend /wallet NEW_ADDRESS to update it.")
-                        : "No wallet set. Send /wallet YOUR_ADDRESS to set it.";
+            if ($wa) {
+                $msg = "💳 Your Worldcoin Wallet\n";
+                $msg .= str_repeat('─', 30) . "\n";
+                $msg .= "📍 Address: " . $wa . "\n";
+                $msg .= str_repeat('─', 30) . "\n\n";
+                $msg .= "ℹ️ To update: /wallet NEW_ADDRESS";
+            } else {
+                $msg = "💳 Worldcoin Wallet Setup\n";
+                $msg .= str_repeat('─', 30) . "\n";
+                $msg .= "⚠️ No wallet address set yet.\n\n";
+                $msg .= "📝 To set your wallet address:\n";
+                $msg .= "Send: /wallet YOUR_ADDRESS\n\n";
+                $msg .= "Example:\n/wallet 0xf00c1b680a372e81...";
+            }
             $this->tg->sendMessage($chatId, $msg, $this->tg->defaultReplyKeyboard($hasActive));
             return;
         }
         if (preg_match('/^\/deposit$/i', $text)) {
             $addr = (string)$this->app->setting('deposit_wallet_address', '');
-            $this->tg->sendMessage($chatId, $addr ? ("Deposit address: " . $addr) : "Deposit address is not configured yet.", $this->tg->defaultReplyKeyboard($hasActive));
+            if ($addr) {
+                $msg = "💵 Deposit World Coins\n";
+                $msg .= str_repeat('─', 30) . "\n";
+                $msg .= "📍 Deposit Address:\n" . $addr . "\n";
+                $msg .= str_repeat('─', 30) . "\n\n";
+                $msg .= "ℹ️ Send your World Coins to this address.";
+            } else {
+                $msg = "⚠️ Deposit address is not configured yet.\nPlease contact the administrator.";
+            }
+            $this->tg->sendMessage($chatId, $msg, $this->tg->defaultReplyKeyboard($hasActive));
             return;
         }
         if (preg_match('/^\/withdraw\s+(\d+)/i', $text, $m)) {
@@ -118,11 +144,32 @@ class TelegramController
             }
             $reqId = $this->game->createWithdrawRequest($userId, $amount);
             $this->game->processWithdrawTest($reqId, true);
-            $this->tg->sendMessage($chatId, "Withdrawal request submitted for {$amount} World Coins. Status: success.", $this->tg->defaultReplyKeyboard($hasActive));
+            $newBalance = $this->users->getCoins($userId);
+            $msg = "✅ Withdrawal Successful!\n";
+            $msg .= str_repeat('─', 30) . "\n";
+            $msg .= "💸 Amount: {$amount} World Coins\n";
+            $msg .= "💰 New Balance: {$newBalance} World Coins\n";
+            $msg .= str_repeat('─', 30) . "\n\n";
+            $msg .= "🎉 Your withdrawal has been processed!";
+            $this->tg->sendMessage($chatId, $msg, $this->tg->defaultReplyKeyboard($hasActive));
             return;
         }
         if (preg_match('/^\/withdraw$/i', $text)) {
-            $this->tg->sendMessage($chatId, "Send amount like: /withdraw 250", $this->tg->defaultReplyKeyboard($hasActive));
+            $coins = $this->users->getCoins($userId);
+            $minBal = (int)$this->app->setting('withdraw_min_balance', 1001);
+            $msg = "💸 Withdraw World Coins\n";
+            $msg .= str_repeat('─', 30) . "\n";
+            $msg .= "💰 Your Balance: {$coins} World Coins\n";
+            $msg .= "⚠️ Minimum Required: {$minBal} World Coins\n";
+            $msg .= str_repeat('─', 30) . "\n\n";
+            if ($coins < $minBal) {
+                $msg .= "❌ You need at least {$minBal} coins to withdraw.\n";
+                $msg .= "Keep playing to earn more!";
+            } else {
+                $msg .= "📝 To withdraw, send:\n/withdraw AMOUNT\n\n";
+                $msg .= "Example: /withdraw 250";
+            }
+            $this->tg->sendMessage($chatId, $msg, $this->tg->defaultReplyKeyboard($hasActive));
             return;
         }
         if (preg_match('/^\/startgame$/i', $text)) {
@@ -196,16 +243,27 @@ class TelegramController
     private function sendProgressMessage(int|string $chatId, array $res, string $model): void
     {
         $digits = implode(', ', str_split((string)($res['result_digits'] ?? '')));
-        $msg = "Roll {$res['rolls_count']}/7: {$res['last_roll']}\nProgress: {$digits}";
+        $msg = "🎲 Roll {$res['rolls_count']}/7: {$res['last_roll']}\n📊 Progress: {$digits}";
+        
         if (!empty($res['finished'])) {
-            $msg .= "\nFinished. Matched digits: {$res['matchCount']}\nAward: {$res['award']} World Coins";
+            $userId = (int)($res['user_id'] ?? 0);
+            $currentBalance = $userId ? $this->users->getCoins($userId) : 0;
+            
+            $msg .= "\n\n" . str_repeat('─', 30);
+            $msg .= "\n🏁 Game Finished!";
+            $msg .= "\n✅ Matched Digits: {$res['matchCount']}/7";
+            $msg .= "\n🎁 Award: +{$res['award']} World Coins";
+            $msg .= "\n💰 Current Balance: {$currentBalance} World Coins";
+            $msg .= "\n" . str_repeat('─', 30);
+            
             if (!empty($res['exact'])) {
                 $openai = new OpenAIService((string)$this->app->env('OPENAI_API_KEY', ''));
                 if (method_exists($openai, 'generateCongratsText')) {
-                    $msg .= "\n" . $openai->generateCongratsText($model, (string)($res['result_digits'] ?? ''));
+                    $msg .= "\n\n🎉 " . $openai->generateCongratsText($model, (string)($res['result_digits'] ?? ''));
                 }
             }
         }
+        
         $hasActive = empty($res['finished']);
         $this->tg->sendMessage($chatId, $msg, $this->tg->defaultReplyKeyboard($hasActive));
     }
