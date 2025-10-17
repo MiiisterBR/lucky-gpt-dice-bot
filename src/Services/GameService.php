@@ -136,7 +136,7 @@ class GameService
                     $award, 
                     $goldenId, 
                     $sessionId, 
-                    \"Won {$matchCount}/7 digits match\"
+                    "Won {$matchCount}/7 digits match"
                 );
             } else {
                 // Record loss (0 coins)
@@ -146,7 +146,7 @@ class GameService
                     0, 
                     $goldenId, 
                     $sessionId, 
-                    \"Lost: {$matchCount}/7 digits match\"
+                    "Lost: {$matchCount}/7 digits match"
                 );
             }
         }
