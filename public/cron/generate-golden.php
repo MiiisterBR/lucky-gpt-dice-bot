@@ -11,6 +11,7 @@ require __DIR__ . '/../../vendor/autoload.php';
 
 use App\App;
 use App\Repositories\GoldenRepository;
+use App\Repositories\TransactionRepository;
 use App\Repositories\UserRepository;
 use App\Services\GameService;
 use App\Services\OpenAIService;
@@ -25,7 +26,8 @@ date_default_timezone_set($timezone);
 
 $usersRepo = new UserRepository($pdo);
 $goldens = new GoldenRepository($pdo);
-$game = new GameService($pdo, $usersRepo, $goldens);
+$transactions = new TransactionRepository($pdo);
+$game = new GameService($pdo, $usersRepo, $goldens, $transactions);
 
 $model = $app->setting('openai_model', $app->env('OPENAI_MODEL', 'gpt-5'));
 $openai = new OpenAIService($app->env('OPENAI_API_KEY', ''));

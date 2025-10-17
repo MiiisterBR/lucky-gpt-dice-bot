@@ -5,6 +5,7 @@ require __DIR__ . '/../vendor/autoload.php';
 use App\App;
 use App\Repositories\UserRepository;
 use App\Repositories\GoldenRepository;
+use App\Repositories\TransactionRepository;
 use App\Services\GameService;
 use App\Services\OpenAIService;
 use App\Services\TelegramService;
@@ -13,7 +14,8 @@ $app = new App(dirname(__DIR__));
 $pdo = $app->pdo();
 $users = new UserRepository($pdo);
 $goldens = new GoldenRepository($pdo);
-$game = new GameService($pdo, $users, $goldens);
+$transactions = new TransactionRepository($pdo);
+$game = new GameService($pdo, $users, $goldens, $transactions);
 
 $adminCount = (int)$pdo->query('SELECT COUNT(*) FROM admin_users')->fetchColumn();
 $err = '';

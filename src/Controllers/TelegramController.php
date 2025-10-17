@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\App;
 use App\Repositories\GoldenRepository;
+use App\Repositories\TransactionRepository;
 use App\Repositories\UserRepository;
 use App\Services\GameService;
 use App\Services\OpenAIService;
@@ -17,6 +18,7 @@ class TelegramController
         private GameService $game,
         private UserRepository $users,
         private GoldenRepository $goldens,
+        private TransactionRepository $transactions,
     ) {}
 
     public function handleWebhook(string $raw): void
@@ -62,14 +64,22 @@ class TelegramController
             return;
         }
         if (preg_match('/^\/help$/i', $text)) {
-            $help = "Commands:\n".
-                    "/status - Show your coins, wallet, and session progress\n".
-                    "/startgame - Start a new game session (first roll happens immediately)\n".
-                    "/next - Roll the next dice (up to 7)\n".
-                    "/wallet - Show your wallet and how to set it\n".
-                    "/wallet <ADDRESS> - Set/Update your Worldcoin wallet\n".
-                    "/deposit - Show the deposit address\n".
-                    "/withdraw <AMOUNT> - Create a withdraw request";
+            $help = "📖 Available Commands:\n\n";
+            $help .= "🎮 Game Commands:\n";
+            $help .= "/startgame - Start a new game\n";
+            $help .= "/next - Roll the next dice\n";
+            $help .= "/pause - Pause current game\n";
+            $help .= "/resume - Resume paused game\n\n";
+            $help .= "💰 Wallet Commands:\n";
+            $help .= "/wallet - Show your wallet\n";
+            $help .= "/wallet <ADDRESS> - Set wallet\n";
+            $help .= "/deposit - Show deposit address\n";
+            $help .= "/withdraw <AMOUNT> - Withdraw coins\n\n";
+            $help .= "📊 Info Commands:\n";
+            $help .= "/status - Show your status\n";
+            $help .= "/stats - Show your statistics\n";
+            $help .= "/history - Transaction history\n";
+            $help .= "/leaderboard - Top players";
             $this->tg->sendMessage($chatId, $help, $this->tg->defaultReplyKeyboard($hasActive));
             return;
         }
@@ -170,6 +180,121 @@ class TelegramController
                 $msg .= "Example: /withdraw 250";
             }
             $this->tg->sendMessage($chatId, $msg, $this->tg->defaultReplyKeyboard($hasActive));
+            return;
+        }
+        if (preg_match('/^\/history$/i', $text)) {
+            $transactions = $this->transactions->getByUser($userId, 10);
+            if (empty($transactions)) {
+                $this->tg->sendMessage($chatId, "📊 Transaction History\n\n🔍 No transactions yet.\nPlay games to earn coins!", $this->tg->defaultReplyKeyboard($hasActive));
+                return;
+            }
+            $msg = "📊 Transaction History (Last 10)\n";
+            $msg .= str_repeat('─', 30) . "\n\n";
+            foreach ($transactions as $tx) {
+                $icon = match($tx['type']) {
+                    'win' => '🎉',
+                    'loss' => '😔',
+                    'deposit' => '💵',
+                    'withdraw' => '💸',
+                    'bonus' => '🎁',
+                    'refund' => '🔄',
+                    default => '•'
+                };
+                $sign = in_array($tx['type'], ['win', 'deposit', 'bonus', 'refund']) ? '+' : '-';
+                $msg .= "{$icon} " . ucfirst($tx['type']) . ": {$sign}{$tx['amount']} coins\n";
+                if ($tx['description']) {
+                    $msg .= "   " . htmlspecialchars($tx['description']) . "\n";
+                }
+                $msg .= "   " . date('M d, H:i', strtotime($tx['created_at'])) . "\n\n";
+            }
+            $this->tg->sendMessage($chatId, $msg, $this->tg->defaultReplyKeyboard($hasActive));
+            return;
+        }
+        if (preg_match('/^\/stats$/i', $text)) {
+            $coins = $this->users->getCoins($userId);
+            $totalWins = $this->transactions->getTotalWins($userId);
+            $totalLosses = $this->transactions->getTotalLosses($userId);
+            $winCount = $this->transactions->getWinCount($userId);
+            $lossCount = $this->transactions->getLossCount($userId);
+            $totalGames = $winCount + $lossCount;
+            $winRate = $totalGames > 0 ? round(($winCount / $totalGames) * 100, 1) : 0;
+            
+            $msg = "📈 Your Statistics\n";
+            $msg .= str_repeat('─', 30) . "\n";
+            $msg .= "💰 Current Balance: {$coins} coins\n\n";
+            $msg .= "🎮 Games Played: {$totalGames}\n";
+            $msg .= "✅ Wins: {$winCount}\n";
+            $msg .= "❌ Losses: {$lossCount}\n";
+            $msg .= "📊 Win Rate: {$winRate}%\n\n";
+            $msg .= "🏆 Total Won: {$totalWins} coins\n";
+            $msg .= "💸 Total Lost: {$totalLosses} coins\n";
+            $netProfit = $totalWins - $totalLosses;
+            $profitIcon = $netProfit >= 0 ? '📈' : '📉';
+            $profitSign = $netProfit >= 0 ? '+' : '';
+            $msg .= "{$profitIcon} Net Profit: {$profitSign}{$netProfit} coins\n";
+            $msg .= str_repeat('─', 30);
+            
+            $this->tg->sendMessage($chatId, $msg, $this->tg->defaultReplyKeyboard($hasActive));
+            return;
+        }
+        if (preg_match('/^\/pause$/i', $text)) {
+            $active = $this->game->getActiveSession($userId);
+            if (!$active) {
+                $this->tg->sendMessage($chatId, "⚠️ No active session to pause.\nStart a game with /startgame", $this->tg->defaultReplyKeyboard(false));
+                return;
+            }
+            if ((int)$active['finished'] === 1) {
+                $this->tg->sendMessage($chatId, "⚠️ This session is already finished.\nStart a new game with /startgame", $this->tg->defaultReplyKeyboard(false));
+                return;
+            }
+            if ((int)$active['paused'] === 1) {
+                $this->tg->sendMessage($chatId, "⚠️ This session is already paused.\nUse /resume to continue", $this->tg->defaultReplyKeyboard(false));
+                return;
+            }
+            
+            $this->game->pauseSession((int)$active['id'], $userId);
+            $rollsDone = (int)$active['rolls_count'];
+            $throwsLeft = (int)$active['throws_remaining'];
+            
+            $msg = "⏸️ Game Paused\n";
+            $msg .= str_repeat('─', 30) . "\n";
+            $msg .= "🎲 Progress: {$rollsDone}/7 rolls\n";
+            $msg .= "🔢 Throws Left: {$throwsLeft}\n";
+            $msg .= "📊 Digits: " . implode(', ', str_split($active['result_digits'] ?? '')) . "\n";
+            $msg .= str_repeat('─', 30) . "\n\n";
+            $msg .= "💡 Use /resume when ready to continue!";
+            
+            $this->tg->sendMessage($chatId, $msg, $this->tg->defaultReplyKeyboard(false));
+            return;
+        }
+        if (preg_match('/^\/resume$/i', $text)) {
+            $active = $this->game->getActiveSession($userId);
+            if (!$active) {
+                $this->tg->sendMessage($chatId, "⚠️ No session to resume.\nStart a new game with /startgame", $this->tg->defaultReplyKeyboard(false));
+                return;
+            }
+            if ((int)$active['finished'] === 1) {
+                $this->tg->sendMessage($chatId, "⚠️ This session is finished.\nStart a new game with /startgame", $this->tg->defaultReplyKeyboard(false));
+                return;
+            }
+            if ((int)$active['paused'] === 0) {
+                $this->tg->sendMessage($chatId, "⚠️ This session is not paused.\nUse /next to continue playing", $this->tg->defaultReplyKeyboard(true));
+                return;
+            }
+            
+            $this->game->resumeSession((int)$active['id'], $userId);
+            $rollsDone = (int)$active['rolls_count'];
+            $throwsLeft = (int)$active['throws_remaining'];
+            
+            $msg = "▶️ Game Resumed!\n";
+            $msg .= str_repeat('─', 30) . "\n";
+            $msg .= "🎲 Progress: {$rollsDone}/7 rolls\n";
+            $msg .= "🔢 Throws Left: {$throwsLeft}\n";
+            $msg .= "📊 Digits: " . implode(', ', str_split($active['result_digits'] ?? '')) . "\n";
+            $msg .= str_repeat('─', 30) . "\n\n";
+            $msg .= "🎯 Ready to continue! Use /next to roll";
+            
+            $this->tg->sendMessage($chatId, $msg, $this->tg->defaultReplyKeyboard(true));
             return;
         }
         if (preg_match('/^\/startgame$/i', $text)) {

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Repositories\GoldenRepository;
+use App\Repositories\TransactionRepository;
 use App\Repositories\UserRepository;
 use PDO;
 
@@ -12,6 +13,7 @@ class GameService
         private PDO $pdo,
         private UserRepository $users,
         private GoldenRepository $goldens,
+        private TransactionRepository $transactions,
     ) {}
 
     // v1 legacy methods removed - now using v2 session-based game logic
@@ -19,7 +21,7 @@ class GameService
     public function leaderboards(): array
     {
         return [
-            'winners' => $this->users->getTopWinners(7),
+            'winners' => $this->transactions->getLeaderboardByWins(7),
             'losers' => $this->users->getTopLosers(7),
         ];
     }
@@ -75,7 +77,10 @@ class GameService
 
     public function startSession(int $userId, int $goldenId): array
     {
-        $st = $this->pdo->prepare('INSERT INTO game_sessions (user_id, golden_id, rolls_count, finished, score_awarded) VALUES (:u, :g, 0, 0, 0)');
+        $st = $this->pdo->prepare(
+            'INSERT INTO game_sessions (user_id, golden_id, rolls_count, throws_remaining, finished, score_awarded, paused) 
+             VALUES (:u, :g, 0, 7, 0, 0, 0)'
+        );
         $st->execute([':u' => $userId, ':g' => $goldenId]);
         $id = (int)$this->pdo->lastInsertId();
         $q = $this->pdo->prepare('SELECT * FROM game_sessions WHERE id = :id');
@@ -104,11 +109,14 @@ class GameService
 
         $digits = (string)($s['result_digits'] ?? '');
         $digits .= (string)$val;
-        $upd = $this->pdo->prepare('UPDATE game_sessions SET result_digits = :d, rolls_count = :c WHERE id = :id');
-        $upd->execute([':d' => $digits, ':c' => $step, ':id' => $sessionId]);
+        $throwsRemaining = 7 - $step;
+        
+        $upd = $this->pdo->prepare('UPDATE game_sessions SET result_digits = :d, rolls_count = :c, throws_remaining = :t WHERE id = :id');
+        $upd->execute([':d' => $digits, ':c' => $step, ':t' => $throwsRemaining, ':id' => $sessionId]);
 
         $finished = ($step >= 7);
-        $award = 0; $exact = false; $matchCount = 0;
+        $award = 0; $exact = false; $matchCount = 0; $goldenId = (int)($s['golden_id'] ?? 0);
+        
         if ($finished) {
             $goldSt = $this->pdo->prepare('SELECT g.* FROM golden_numbers g INNER JOIN game_sessions s ON s.golden_id = g.id WHERE s.id = :id');
             $goldSt->execute([':id' => $sessionId]);
@@ -116,9 +124,30 @@ class GameService
             if ($g) {
                 [$award, $exact, $matchCount] = $this->computeScore((string)$g['number'], $digits);
             }
-            $this->pdo->prepare('UPDATE game_sessions SET finished = 1, score_awarded = :a WHERE id = :id')->execute([':a' => $award, ':id' => $sessionId]);
+            $this->pdo->prepare('UPDATE game_sessions SET finished = 1, score_awarded = :a WHERE id = :id')
+                ->execute([':a' => $award, ':id' => $sessionId]);
+            
+            // Record transaction and update balance
             if ($award > 0) {
                 $this->users->addPoints($userId, (int)$award);
+                $this->transactions->create(
+                    $userId, 
+                    'win', 
+                    $award, 
+                    $goldenId, 
+                    $sessionId, 
+                    \"Won {$matchCount}/7 digits match\"
+                );
+            } else {
+                // Record loss (0 coins)
+                $this->transactions->create(
+                    $userId, 
+                    'loss', 
+                    0, 
+                    $goldenId, 
+                    $sessionId, 
+                    \"Lost: {$matchCount}/7 digits match\"
+                );
             }
         }
 
@@ -157,16 +186,59 @@ class GameService
 
     public function createWithdrawRequest(int $userId, int $amount): int
     {
-        $st = $this->pdo->prepare('INSERT INTO withdraw_requests (user_id, amount, status) VALUES (:u, :a, "pending")');
-        $st->execute([':u' => $userId, ':a' => $amount]);
-        return (int)$this->pdo->lastInsertId();
+        // Deduct balance immediately and create transaction
+        $this->users->addPoints($userId, -$amount);
+        
+        $transactionId = $this->transactions->create(
+            $userId,
+            'withdraw',
+            $amount,
+            null,
+            null,
+            "Withdrawal request for {$amount} coins",
+            'pending'
+        );
+        
+        return $transactionId;
     }
 
-    public function processWithdrawTest(int $requestId, bool $success = true): void
+    public function processWithdrawTest(int $transactionId, bool $success = true): void
     {
-        $status = $success ? 'success' : 'failed';
-        $resp = $success ? 'stub-ok' : 'stub-error';
-        $this->pdo->prepare('UPDATE withdraw_requests SET status = :s, api_response = :r WHERE id = :id')
-            ->execute([':s' => $status, ':r' => $resp, ':id' => $requestId]);
+        $status = $success ? 'completed' : 'failed';
+        $this->transactions->updateStatus($transactionId, $status);
+        
+        // If failed, refund the amount
+        if (!$success) {
+            $transaction = $this->transactions->getById($transactionId);
+            if ($transaction) {
+                $this->users->addPoints((int)$transaction['user_id'], (int)$transaction['amount']);
+                $this->transactions->create(
+                    (int)$transaction['user_id'],
+                    'refund',
+                    (int)$transaction['amount'],
+                    null,
+                    null,
+                    "Refund for failed withdrawal #{$transactionId}"
+                );
+            }
+        }
+    }
+    
+    public function pauseSession(int $sessionId, int $userId): bool
+    {
+        $stmt = $this->pdo->prepare(
+            'UPDATE game_sessions SET paused = 1, paused_at = NOW() 
+             WHERE id = :id AND user_id = :user_id AND finished = 0'
+        );
+        return $stmt->execute([':id' => $sessionId, ':user_id' => $userId]);
+    }
+    
+    public function resumeSession(int $sessionId, int $userId): bool
+    {
+        $stmt = $this->pdo->prepare(
+            'UPDATE game_sessions SET paused = 0, paused_at = NULL 
+             WHERE id = :id AND user_id = :user_id AND finished = 0'
+        );
+        return $stmt->execute([':id' => $sessionId, ':user_id' => $userId]);
     }
 }

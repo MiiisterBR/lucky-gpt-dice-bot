@@ -5,6 +5,7 @@ require __DIR__ . '/../vendor/autoload.php';
 use App\App;
 use App\Controllers\TelegramController;
 use App\Repositories\GoldenRepository;
+use App\Repositories\TransactionRepository;
 use App\Repositories\UserRepository;
 use App\Services\GameService;
 use App\Services\OpenAIService;
@@ -16,8 +17,9 @@ $pdo = $app->pdo();
 $tg = new TelegramService($app->env('TELEGRAM_BOT_TOKEN', ''));
 $users = new UserRepository($pdo);
 $goldens = new GoldenRepository($pdo);
-$game = new GameService($pdo, $users, $goldens);
-$controller = new TelegramController($app, $tg, $game, $users, $goldens);
+$transactions = new TransactionRepository($pdo);
+$game = new GameService($pdo, $users, $goldens, $transactions);
+$controller = new TelegramController($app, $tg, $game, $users, $goldens, $transactions);
 
 $raw = file_get_contents('php://input') ?: '{}';
 if (filter_var($app->env('LOG_REQUESTS', 'false'), FILTER_VALIDATE_BOOLEAN)) {
