@@ -1,0 +1,60 @@
+CREATE TABLE users (
+  id BIGINT UNSIGNED PRIMARY KEY,
+  username VARCHAR(255),
+  first_name VARCHAR(255),
+  last_name VARCHAR(255),
+  points INT NOT NULL DEFAULT 0,
+  points_today INT NOT NULL DEFAULT 0,
+  last_daily_reset DATE,
+  total_won INT NOT NULL DEFAULT 0,
+  total_lost INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE rolls (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  user_id BIGINT UNSIGNED NOT NULL,
+  telegram_message_id INT,
+  result INT,
+  cost INT NOT NULL DEFAULT 5,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE guesses (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  user_id BIGINT UNSIGNED NOT NULL,
+  golden_id BIGINT UNSIGNED NOT NULL,
+  guess VARCHAR(10) NOT NULL,
+  correct TINYINT(1) DEFAULT 0,
+  reward_given TINYINT(1) DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE golden_numbers (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  generated_at DATETIME NOT NULL,
+  number VARCHAR(3) NOT NULL,
+  source VARCHAR(50) DEFAULT 'openai',
+  announced TINYINT(1) DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE admin_users (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  username VARCHAR(255) NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE settings (
+  `key` VARCHAR(100) PRIMARY KEY,
+  `value` TEXT
+);
+
+INSERT INTO settings (`key`, `value`) VALUES
+('daily_points', '100'),
+('dice_cost', '5'),
+('openai_model', 'gpt-5');
