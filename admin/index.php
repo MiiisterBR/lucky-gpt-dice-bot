@@ -116,7 +116,7 @@ $winners = $users->getTopWinners();
 $losers = $users->getTopLosers();
 $daily = (int)$app->setting('daily_points', $app->env('DAILY_POINTS', 100));
 $dice = (int)$app->setting('dice_cost', $app->env('DICE_COST', 5));
-$allUsers = $pdo->query('SELECT id, username, first_name, last_name, points, points_today, total_won, total_lost, last_daily_reset, created_at, updated_at FROM users ORDER BY id DESC')->fetchAll();
+$allUsers = $pdo->query('SELECT id, username, first_name, last_name, coins, wallet_address, created_at, updated_at FROM users ORDER BY id DESC')->fetchAll();
 
 ?><!doctype html>
 <html>
@@ -147,7 +147,7 @@ $allUsers = $pdo->query('SELECT id, username, first_name, last_name, points, poi
         <h2 class="font-semibold mb-2">Top 7 Winners</h2>
         <ul class="text-sm list-disc pl-5">
           <?php foreach ($winners as $i => $r): $name = $r['username'] ?: trim(($r['first_name'] ?? '') . ' ' . ($r['last_name'] ?? '')) ?: ('ID '.$r['id']); ?>
-            <li><?php echo ($i+1).') '.htmlspecialchars($name).' — points: '.(int)$r['points']; ?></li>
+            <li><?php echo ($i+1).') '.htmlspecialchars($name).' — coins: '.(int)$r['coins']; ?></li>
           <?php endforeach; ?>
         </ul>
       </div>
@@ -155,7 +155,7 @@ $allUsers = $pdo->query('SELECT id, username, first_name, last_name, points, poi
         <h2 class="font-semibold mb-2">Top 7 Unlucky</h2>
         <ul class="text-sm list-disc pl-5">
           <?php foreach ($losers as $i => $r): $name = $r['username'] ?: trim(($r['first_name'] ?? '') . ' ' . ($r['last_name'] ?? '')) ?: ('ID '.$r['id']); ?>
-            <li><?php echo ($i+1).') '.htmlspecialchars($name).' — total_lost: '.(int)$r['total_lost']; ?></li>
+            <li><?php echo ($i+1).') '.htmlspecialchars($name).' — coins: '.(int)$r['coins']; ?></li>
           <?php endforeach; ?>
         </ul>
       </div>
@@ -184,11 +184,8 @@ $allUsers = $pdo->query('SELECT id, username, first_name, last_name, points, poi
               <th>ID</th>
               <th>Username</th>
               <th>Name</th>
-              <th>Points</th>
-              <th>Daily</th>
-              <th>Total Won</th>
-              <th>Total Lost</th>
-              <th>Last Reset</th>
+              <th>Coins</th>
+              <th>Wallet</th>
               <th>Created</th>
               <th>Updated</th>
             </tr>
@@ -199,11 +196,8 @@ $allUsers = $pdo->query('SELECT id, username, first_name, last_name, points, poi
                 <td><?php echo (int)$u['id']; ?></td>
                 <td><?php echo htmlspecialchars((string)($u['username'] ?? ''), ENT_QUOTES); ?></td>
                 <td><?php echo htmlspecialchars($name, ENT_QUOTES); ?></td>
-                <td><?php echo (int)$u['points']; ?></td>
-                <td><?php echo (int)$u['points_today']; ?></td>
-                <td><?php echo (int)$u['total_won']; ?></td>
-                <td><?php echo (int)$u['total_lost']; ?></td>
-                <td><?php echo htmlspecialchars((string)($u['last_daily_reset'] ?? ''), ENT_QUOTES); ?></td>
+                <td><?php echo (int)$u['coins']; ?></td>
+                <td><?php echo htmlspecialchars((string)($u['wallet_address'] ?? ''), ENT_QUOTES); ?></td>
                 <td><?php echo htmlspecialchars((string)($u['created_at'] ?? ''), ENT_QUOTES); ?></td>
                 <td><?php echo htmlspecialchars((string)($u['updated_at'] ?? ''), ENT_QUOTES); ?></td>
               </tr>
