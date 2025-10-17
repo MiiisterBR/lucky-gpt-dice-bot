@@ -57,46 +57,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header('Location: index.php');
             exit;
         }
-    } elseif ($action === 'generate' && $isLogged) {
-        $model = $app->setting('openai_model', $app->env('OPENAI_MODEL', 'gpt-5'));
-        $openai = new OpenAIService($app->env('OPENAI_API_KEY', ''));
-        $latest = $game->getOrCreateDailyGolden($openai, $model);
-        $tg = new TelegramService($app->env('TELEGRAM_BOT_TOKEN', ''));
-        $text = $openai->generateAnnouncementText($model);
-        $stmt = $pdo->query('SELECT id FROM users');
-        $ids = $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
-        foreach ($ids as $uid) {
-            $tg->sendMessage((int)$uid, $text);
-            usleep(50000);
-        }
-        if (!empty($latest['id'])) {
-            $goldens->markAnnounced((int)$latest['id']);
-        }
-    } elseif ($action === 'update_settings' && $isLogged) {
-        $deposit = trim($_POST['deposit_wallet_address'] ?? '');
-        $sleepMs = (string)max(0, (int)($_POST['sleep_ms_between_rolls'] ?? 3000));
-        $quietStart = trim($_POST['quiet_hours_start'] ?? '23:00');
-        $quietEnd = trim($_POST['quiet_hours_end'] ?? '00:00');
-        $score3 = (string)max(0, (int)($_POST['score_match_3'] ?? 10));
-        $score5 = (string)max(0, (int)($_POST['score_match_5'] ?? 15));
-        $scoreUnord = (string)max(0, (int)($_POST['score_all_unordered'] ?? 30));
-        $scoreExact = (string)max(0, (int)($_POST['score_exact_ordered'] ?? 10000));
-        $minBal = (string)max(0, (int)($_POST['withdraw_min_balance'] ?? 1001));
-        $startCoins = (string)max(0, (int)($_POST['start_coins'] ?? 1000));
-        $model = trim($_POST['openai_model'] ?? 'gpt-5');
-
-        $st = $pdo->prepare('REPLACE INTO settings (`key`, `value`) VALUES (:k, :v)');
-        $st->execute([':k' => 'deposit_wallet_address', ':v' => $deposit]);
-        $st->execute([':k' => 'sleep_ms_between_rolls', ':v' => $sleepMs]);
-        $st->execute([':k' => 'quiet_hours_start', ':v' => $quietStart]);
-        $st->execute([':k' => 'quiet_hours_end', ':v' => $quietEnd]);
-        $st->execute([':k' => 'score_match_3', ':v' => $score3]);
-        $st->execute([':k' => 'score_match_5', ':v' => $score5]);
-        $st->execute([':k' => 'score_all_unordered', ':v' => $scoreUnord]);
-        $st->execute([':k' => 'score_exact_ordered', ':v' => $scoreExact]);
-        $st->execute([':k' => 'withdraw_min_balance', ':v' => $minBal]);
-        $st->execute([':k' => 'start_coins', ':v' => $startCoins]);
-        $st->execute([':k' => 'openai_model', ':v' => $model]);
     }
 }
 
@@ -145,6 +105,7 @@ $scoreExact = (int)$app->setting('score_exact_ordered', 10000);
 $minBal = (int)$app->setting('withdraw_min_balance', 1001);
 $startCoins = (int)$app->setting('start_coins', 1000);
 $modelName = (string)$app->setting('openai_model', 'gpt-5');
+$timezone = (string)$app->setting('timezone', 'UTC');
 
 $allUsers = $pdo->query('SELECT id, username, first_name, last_name, coins, wallet_address, created_at, updated_at FROM users ORDER BY id DESC')->fetchAll();
 
@@ -169,7 +130,7 @@ $allUsers = $pdo->query('SELECT id, username, first_name, last_name, coins, wall
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
       <div class="bg-white p-4 rounded shadow"><div class="text-gray-500 text-sm">Total Users</div><div class="text-2xl font-bold"><?php echo $totalUsers; ?></div></div>
       <div class="bg-white p-4 rounded shadow"><div class="text-gray-500 text-sm">Current Golden</div><div class="text-2xl font-bold"><?php echo $latest['number'] ?? '—'; ?></div></div>
-      <div class="bg-white p-4 rounded shadow"><form method="post"><input type="hidden" name="action" value="generate"><button class="w-full bg-blue-600 text-white rounded py-2">Generate Golden Number</button></form></div>
+      <div class="bg-white p-4 rounded shadow"><button id="generateBtn" class="w-full bg-blue-600 text-white rounded py-2 hover:bg-blue-700 transition">Generate Golden Number</button></div>
     </div>
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
@@ -192,9 +153,50 @@ $allUsers = $pdo->query('SELECT id, username, first_name, last_name, coins, wall
     </div>
 
     <div class="bg-white p-4 rounded shadow">
-      <h2 class="font-semibold mb-3">Settings</h2>
-      <form method="post" class="space-y-4">
-        <input type="hidden" name="action" value="update_settings" />
+      <div class="flex justify-between items-center mb-3">
+        <h2 class="font-semibold">Settings</h2>
+        <button id="editSettingsBtn" class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 transition">Edit Settings</button>
+      </div>
+      <div id="settingsDisplay" class="space-y-2 text-sm">
+        <div><span class="font-medium">Timezone:</span> <?php echo htmlspecialchars($timezone); ?></div>
+        <div><span class="font-medium">Deposit Wallet:</span> <?php echo htmlspecialchars($depositAddr ?: 'Not set'); ?></div>
+        <div><span class="font-medium">Sleep Between Rolls:</span> <?php echo $sleepMs; ?>ms</div>
+        <div><span class="font-medium">Quiet Hours:</span> <?php echo htmlspecialchars($quietStart); ?> - <?php echo htmlspecialchars($quietEnd); ?></div>
+        <div><span class="font-medium">Scoring:</span> 3match=<?php echo $score3; ?>, 5match=<?php echo $score5; ?>, Unord=<?php echo $scoreUnord; ?>, Exact=<?php echo $scoreExact; ?></div>
+        <div><span class="font-medium">Start Coins:</span> <?php echo $startCoins; ?>, Min Withdraw: <?php echo $minBal; ?></div>
+        <div><span class="font-medium">OpenAI Model:</span> <?php echo htmlspecialchars($modelName); ?></div>
+      </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+        <div class="p-6">
+          <div class="flex justify-between items-center mb-4">
+            <h2 class="text-xl font-bold">Edit Settings</h2>
+            <button id="closeModalBtn" class="text-gray-500 hover:text-gray-700">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+              </svg>
+            </button>
+          </div>
+          <form id="settingsForm" class="space-y-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <label class="block"> <span class="text-sm text-gray-600">Timezone</span>
+            <select name="timezone" class="w-full border rounded p-2">
+              <option value="UTC" <?php echo $timezone === 'UTC' ? 'selected' : ''; ?>>UTC (GMT+0)</option>
+              <option value="Asia/Tehran" <?php echo $timezone === 'Asia/Tehran' ? 'selected' : ''; ?>>Asia/Tehran (GMT+3:30)</option>
+              <option value="Europe/London" <?php echo $timezone === 'Europe/London' ? 'selected' : ''; ?>>Europe/London (GMT+0/+1)</option>
+              <option value="Europe/Paris" <?php echo $timezone === 'Europe/Paris' ? 'selected' : ''; ?>>Europe/Paris (GMT+1/+2)</option>
+              <option value="America/New_York" <?php echo $timezone === 'America/New_York' ? 'selected' : ''; ?>>America/New_York (GMT-5/-4)</option>
+              <option value="America/Los_Angeles" <?php echo $timezone === 'America/Los_Angeles' ? 'selected' : ''; ?>>America/Los_Angeles (GMT-8/-7)</option>
+              <option value="Asia/Dubai" <?php echo $timezone === 'Asia/Dubai' ? 'selected' : ''; ?>>Asia/Dubai (GMT+4)</option>
+              <option value="Asia/Shanghai" <?php echo $timezone === 'Asia/Shanghai' ? 'selected' : ''; ?>>Asia/Shanghai (GMT+8)</option>
+              <option value="Asia/Tokyo" <?php echo $timezone === 'Asia/Tokyo' ? 'selected' : ''; ?>>Asia/Tokyo (GMT+9)</option>
+              <option value="Australia/Sydney" <?php echo $timezone === 'Australia/Sydney' ? 'selected' : ''; ?>>Australia/Sydney (GMT+10/+11)</option>
+            </select>
+          </label>
+        </div>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <label class="block"> <span class="text-sm text-gray-600">Deposit Wallet Address</span>
             <input name="deposit_wallet_address" value="<?php echo htmlspecialchars($depositAddr); ?>" class="w-full border rounded p-2" />
@@ -236,10 +238,13 @@ $allUsers = $pdo->query('SELECT id, username, first_name, last_name, coins, wall
             <input name="openai_model" value="<?php echo htmlspecialchars($modelName); ?>" class="w-full border rounded p-2" />
           </label>
         </div>
-        <div>
-          <button class="w-full bg-green-600 text-white rounded py-2">Save Settings</button>
+            <div class="flex gap-2">
+              <button type="button" id="cancelBtn" class="flex-1 bg-gray-300 text-gray-700 rounded py-2 hover:bg-gray-400 transition">Cancel</button>
+              <button type="submit" class="flex-1 bg-green-600 text-white rounded py-2 hover:bg-green-700 transition">Save Settings</button>
+            </div>
+          </form>
         </div>
-      </form>
+      </div>
     </div>
 
     <div class="bg-white p-4 rounded shadow mt-6">
@@ -275,6 +280,21 @@ $allUsers = $pdo->query('SELECT id, username, first_name, last_name, coins, wall
     </div>
   </div>
 </body>
+<!-- Toast Container -->
+<div id="toastContainer" class="fixed top-4 right-4 z-50 space-y-2"></div>
+
+<!-- Confirm Modal -->
+<div id="confirmModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+  <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+    <h3 class="text-lg font-bold mb-2">Confirm Action</h3>
+    <p id="confirmMessage" class="text-gray-600 mb-4"></p>
+    <div class="flex gap-2">
+      <button id="confirmCancel" class="flex-1 bg-gray-300 text-gray-700 rounded py-2 hover:bg-gray-400">Cancel</button>
+      <button id="confirmOk" class="flex-1 bg-blue-600 text-white rounded py-2 hover:bg-blue-700">Confirm</button>
+    </div>
+  </div>
+</div>
+
 <script>
   $(function(){
     if ($('#usersTable').length) {
@@ -283,6 +303,85 @@ $allUsers = $pdo->query('SELECT id, username, first_name, last_name, coins, wall
         order: [[0,'desc']]
       });
     }
+    
+    // Toast function
+    function showToast(message, type = 'success') {
+      const toast = $('<div class="px-4 py-3 rounded shadow-lg text-white transition-all transform " style="min-width:250px">');
+      toast.addClass(type === 'success' ? 'bg-green-600' : 'bg-red-600');
+      toast.text(message);
+      $('#toastContainer').append(toast);
+      toast.addClass('translate-x-0').removeClass('translate-x-full');
+      setTimeout(() => {
+        toast.addClass('translate-x-full');
+        setTimeout(() => toast.remove(), 300);
+      }, 3000);
+    }
+    
+    // Generate Golden Number
+    $('#generateBtn').click(function() {
+      const btn = $(this);
+      btn.prop('disabled', true).text('Generating...');
+      
+      $.post('ajax.php', { action: 'generate_golden' }, function(res) {
+        if (res.needs_confirm) {
+          $('#confirmMessage').text(res.message + ' Do you want to create a new one?');
+          $('#confirmModal').removeClass('hidden');
+          
+          $('#confirmOk').off('click').click(function() {
+            $('#confirmModal').addClass('hidden');
+            $.post('ajax.php', { action: 'generate_golden', force: '1' }, function(res2) {
+              if (res2.success) {
+                showToast(res2.message + ' New number: ' + res2.number);
+                location.reload();
+              } else {
+                showToast(res2.message, 'error');
+              }
+              btn.prop('disabled', false).text('Generate Golden Number');
+            });
+          });
+          
+          $('#confirmCancel').off('click').click(function() {
+            $('#confirmModal').addClass('hidden');
+            btn.prop('disabled', false).text('Generate Golden Number');
+          });
+        } else if (res.success) {
+          showToast(res.message + ' Number: ' + res.number);
+          location.reload();
+        } else {
+          showToast(res.message, 'error');
+          btn.prop('disabled', false).text('Generate Golden Number');
+        }
+      }).fail(function() {
+        showToast('Network error', 'error');
+        btn.prop('disabled', false).text('Generate Golden Number');
+      });
+    });
+    
+    // Settings Modal
+    $('#editSettingsBtn').click(function() {
+      $('#settingsModal').removeClass('hidden');
+    });
+    
+    $('#closeModalBtn, #cancelBtn').click(function() {
+      $('#settingsModal').addClass('hidden');
+    });
+    
+    // Save Settings
+    $('#settingsForm').submit(function(e) {
+      e.preventDefault();
+      const data = $(this).serialize() + '&action=update_settings';
+      
+      $.post('ajax.php', data, function(res) {
+        if (res.success) {
+          showToast(res.message);
+          setTimeout(() => location.reload(), 1000);
+        } else {
+          showToast(res.message, 'error');
+        }
+      }).fail(function() {
+        showToast('Network error', 'error');
+      });
+    });
   });
 </script>
 </html>

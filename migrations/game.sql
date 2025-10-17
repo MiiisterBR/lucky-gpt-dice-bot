@@ -96,5 +96,6 @@ INSERT INTO settings (`key`, `value`) VALUES
 ('score_all_unordered', '30'),
 ('score_exact_ordered', '10000'),
 ('dice_cost', '0'),
-('log_requests', 'false')
+('log_requests', 'false'),
+('timezone', 'UTC')
 ON DUPLICATE KEY UPDATE `value` = VALUES(`value`);

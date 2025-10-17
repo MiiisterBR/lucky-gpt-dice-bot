@@ -52,6 +52,19 @@ class GameService
         return $this->goldens->forDate($today) ?: ($this->goldens->latest() ?: []);
     }
 
+    public function forceCreateDailyGolden(OpenAIService $openAI, string $model = 'gpt-5'): array
+    {
+        // Admin can force create a new golden number even if one exists for today
+        $num = method_exists($openAI, 'generateSevenDigit') ? $openAI->generateSevenDigit($model) : '';
+        if (!preg_match('/^\d{7}$/', $num)) {
+            $n = '';
+            for ($i = 0; $i < 7; $i++) { $n .= (string)random_int(0, 9); }
+            $num = $n;
+        }
+        $this->goldens->create($num, 'openai');
+        return $this->goldens->latest() ?: [];
+    }
+
     public function getActiveSession(int $userId): ?array
     {
         $st = $this->pdo->prepare('SELECT * FROM game_sessions WHERE user_id = :u AND finished = 0 ORDER BY id DESC LIMIT 1');
