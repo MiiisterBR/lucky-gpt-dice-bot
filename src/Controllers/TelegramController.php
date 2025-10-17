@@ -42,7 +42,7 @@ class TelegramController
         $userId = (int)$user['id'];
 
         if (preg_match('/^\/start$/i', $text)) {
-            $this->tg->sendMessage($chatId, "Welcome to Golden Dice v2! Use /help to see all commands.");
+            $this->tg->sendMessage($chatId, "Welcome to Golden Dice v2! Use /help to see all commands.", $this->tg->defaultReplyKeyboard());
             return;
         }
         if (preg_match('/^\/help$/i', $text)) {
@@ -54,7 +54,7 @@ class TelegramController
                     "/wallet <ADDRESS> - Set/Update your Worldcoin wallet\n".
                     "/deposit - Show the deposit address\n".
                     "/withdraw <AMOUNT> - Create a withdraw request";
-            $this->tg->sendMessage($chatId, $help);
+            $this->tg->sendMessage($chatId, $help, $this->tg->defaultReplyKeyboard());
             return;
         }
         if (preg_match('/^\/status$/i', $text)) {
@@ -68,7 +68,7 @@ class TelegramController
         if (preg_match('/^\/wallet\s+(.+)/i', $text, $m)) {
             $addr = trim($m[1]);
             $this->users->setWalletAddress($userId, $addr);
-            $this->tg->sendMessage($chatId, "Wallet address updated.");
+            $this->tg->sendMessage($chatId, "Wallet address updated.", $this->tg->defaultReplyKeyboard());
             return;
         }
         if (preg_match('/^\/wallet$/i', $text)) {
@@ -76,12 +76,12 @@ class TelegramController
             $wa = $u['wallet_address'] ?? '';
             $msg = $wa ? ("Your wallet address: " . $wa . "\nSend /wallet NEW_ADDRESS to update it.")
                         : "No wallet set. Send /wallet YOUR_ADDRESS to set it.";
-            $this->tg->sendMessage($chatId, $msg);
+            $this->tg->sendMessage($chatId, $msg, $this->tg->defaultReplyKeyboard());
             return;
         }
         if (preg_match('/^\/deposit$/i', $text)) {
             $addr = (string)$this->app->setting('deposit_wallet_address', '');
-            $this->tg->sendMessage($chatId, $addr ? ("Deposit address: " . $addr) : "Deposit address is not configured yet.");
+            $this->tg->sendMessage($chatId, $addr ? ("Deposit address: " . $addr) : "Deposit address is not configured yet.", $this->tg->defaultReplyKeyboard());
             return;
         }
         if (preg_match('/^\/withdraw\s+(\d+)/i', $text, $m)) {
@@ -89,42 +89,42 @@ class TelegramController
             $coins = $this->users->getCoins($userId);
             $minBal = (int)$this->app->setting('withdraw_min_balance', 1001);
             if ($coins < $minBal) {
-                $this->tg->sendMessage($chatId, "You need at least {$minBal} World Coins to withdraw.");
+                $this->tg->sendMessage($chatId, "You need at least {$minBal} World Coins to withdraw.", $this->tg->defaultReplyKeyboard());
                 return;
             }
             if ($amount <= 0) {
-                $this->tg->sendMessage($chatId, "Invalid amount.");
+                $this->tg->sendMessage($chatId, "Invalid amount.", $this->tg->defaultReplyKeyboard());
                 return;
             }
             if ($amount > $coins) {
-                $this->tg->sendMessage($chatId, "Insufficient balance. You have {$coins} World Coins.");
+                $this->tg->sendMessage($chatId, "Insufficient balance. You have {$coins} World Coins.", $this->tg->defaultReplyKeyboard());
                 return;
             }
             $reqId = $this->game->createWithdrawRequest($userId, $amount);
             $this->game->processWithdrawTest($reqId, true);
-            $this->tg->sendMessage($chatId, "Withdrawal request submitted for {$amount} World Coins. Status: success.");
+            $this->tg->sendMessage($chatId, "Withdrawal request submitted for {$amount} World Coins. Status: success.", $this->tg->defaultReplyKeyboard());
             return;
         }
         if (preg_match('/^\/withdraw$/i', $text)) {
-            $this->tg->sendMessage($chatId, "Send amount like: /withdraw 250");
+            $this->tg->sendMessage($chatId, "Send amount like: /withdraw 250", $this->tg->defaultReplyKeyboard());
             return;
         }
         if (preg_match('/^\/startgame$/i', $text)) {
             if ($this->isQuietHours()) {
                 $s = (string)$this->app->setting('quiet_hours_start', '23:00');
                 $e = (string)$this->app->setting('quiet_hours_end', '00:00');
-                $this->tg->sendMessage($chatId, "Bot is inactive from {$s} to {$e}. Come back after {$e}.");
+                $this->tg->sendMessage($chatId, "Bot is inactive from {$s} to {$e}. Come back after {$e}.", $this->tg->defaultReplyKeyboard());
                 return;
             }
             $active = $this->game->getActiveSession($userId);
             if ($active) {
-                $this->tg->sendMessage($chatId, "You already have an active session. Send /next to continue (" . ((int)$active['rolls_count']) . "/7). ");
+                $this->tg->sendMessage($chatId, "You already have an active session. Send /next to continue (" . ((int)$active['rolls_count']) . "/7). ", $this->tg->defaultReplyKeyboard());
                 return;
             }
             $model = (string)$this->app->setting('openai_model', $this->app->env('OPENAI_MODEL', 'gpt-5'));
             $openai = new OpenAIService((string)$this->app->env('OPENAI_API_KEY', ''));
             $golden = $this->game->getOrCreateDailyGolden($openai, $model);
-            if (!$golden) { $this->tg->sendMessage($chatId, "Golden number is not ready yet."); return; }
+            if (!$golden) { $this->tg->sendMessage($chatId, "Golden number is not ready yet.", $this->tg->defaultReplyKeyboard()); return; }
             $session = $this->game->startSession($userId, (int)$golden['id']);
             $sleepMs = (int)$this->app->setting('sleep_ms_between_rolls', $this->app->env('SLEEP_MS_BETWEEN_ROLLS', 3000));
             $res = $this->game->rollNext((int)$session['id'], $userId, $chatId, $this->tg, $sleepMs);
@@ -133,7 +133,7 @@ class TelegramController
         }
         if (preg_match('/^\/next$/i', $text)) {
             $active = $this->game->getActiveSession($userId);
-            if (!$active) { $this->tg->sendMessage($chatId, "No active session. Use /startgame"); return; }
+            if (!$active) { $this->tg->sendMessage($chatId, "No active session. Use /startgame", $this->tg->defaultReplyKeyboard()); return; }
             $sleepMs = (int)$this->app->setting('sleep_ms_between_rolls', $this->app->env('SLEEP_MS_BETWEEN_ROLLS', 3000));
             $model = (string)$this->app->setting('openai_model', $this->app->env('OPENAI_MODEL', 'gpt-5'));
             $res = $this->game->rollNext((int)$active['id'], $userId, $chatId, $this->tg, $sleepMs);
@@ -141,7 +141,7 @@ class TelegramController
             return;
         }
 
-        $this->tg->sendMessage($chatId, "Unknown command. Use /help");
+        $this->tg->sendMessage($chatId, "Unknown command. Use /help", $this->tg->defaultReplyKeyboard());
         return;
     }
 
@@ -161,7 +161,7 @@ class TelegramController
         };
 
         $text = $fmt($w, 'Top 7 Winners', 'coins') . "\n\n" . $fmt($l, 'Top 7 Lowest Balances', 'coins');
-        $this->tg->sendMessage($chatId, $text);
+        $this->tg->sendMessage($chatId, $text, $this->tg->defaultReplyKeyboard());
     }
 
     private function sendStatus(int|string $chatId, int $userId): void
@@ -172,7 +172,7 @@ class TelegramController
         $s = $this->game->getActiveSession($userId);
         $progress = $s ? ((int)$s['rolls_count'] . '/7, digits: ' . implode(', ', str_split((string)($s['result_digits'] ?? '')))) : 'No active session';
         $text = "World Coins: {$coins}\nWallet: {$wallet}\nSession: {$progress}";
-        $this->tg->sendMessage($chatId, $text);
+        $this->tg->sendMessage($chatId, $text, $this->tg->defaultReplyKeyboard());
     }
 
     private function sendProgressMessage(int|string $chatId, array $res, string $model): void
@@ -188,7 +188,7 @@ class TelegramController
                 }
             }
         }
-        $this->tg->sendMessage($chatId, $msg);
+        $this->tg->sendMessage($chatId, $msg, $this->tg->defaultReplyKeyboard());
     }
 
     private function isQuietHours(): bool

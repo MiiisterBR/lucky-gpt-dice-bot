@@ -16,13 +16,16 @@ class TelegramService
         ]);
     }
 
-    public function sendMessage(int|string $chatId, string $text): array
+    public function sendMessage(int|string $chatId, string $text, ?array $replyMarkup = null): array
     {
         $payload = [
             'chat_id' => $chatId,
             'text' => $text,
             'parse_mode' => 'Markdown'
         ];
+        if ($replyMarkup) {
+            $payload['reply_markup'] = json_encode($replyMarkup, JSON_UNESCAPED_UNICODE);
+        }
         $res = $this->client->post('sendMessage', ['form_params' => $payload]);
         return json_decode((string)$res->getBody(), true) ?? [];
     }
@@ -33,6 +36,19 @@ class TelegramService
             'chat_id' => $chatId
         ]]);
         return json_decode((string)$res->getBody(), true) ?? [];
+    }
+    public function defaultReplyKeyboard(): array
+    {
+        return [
+            'keyboard' => [
+                [ ['text' => '/startgame'], ['text' => '/next'] ],
+                [ ['text' => '/status'], ['text' => '/leaderboard'] ],
+                [ ['text' => '/wallet'], ['text' => '/deposit'], ['text' => '/withdraw 100'] ],
+            ],
+            'resize_keyboard' => true,
+            'one_time_keyboard' => false,
+            'is_persistent' => true
+        ];
     }
 }
 
