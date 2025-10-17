@@ -395,6 +395,13 @@ class TelegramController
 
     private function isQuietHours(): bool
     {
+        // Check manual override first
+        $manualActive = (int)$this->app->setting('quiet_hours_active', 0);
+        if ($manualActive === 1) {
+            return true; // Manually activated
+        }
+        
+        // Check time-based quiet hours
         $start = (string)$this->app->setting('quiet_hours_start', '23:00');
         $end = (string)$this->app->setting('quiet_hours_end', '00:00');
         $now = date('H:i');

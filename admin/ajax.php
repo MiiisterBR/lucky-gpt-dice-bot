@@ -26,6 +26,102 @@ $game = new GameService($pdo, $users, $goldens, $transactions);
 
 $action = $_POST['action'] ?? '';
 
+if ($action === 'activate_quiet_hours') {
+    try {
+        $tg = new TelegramService($app->env('TELEGRAM_BOT_TOKEN', ''));
+        
+        // Get quiet hours from settings
+        $quietStart = $app->setting('quiet_hours_start', '23:00');
+        $quietEnd = $app->setting('quiet_hours_end', '00:00');
+        
+        // Prepare message
+        $message = "🌙 Bot Maintenance Notice\n\n";
+        $message .= "The bot is now inactive for maintenance.\n\n";
+        $message .= "⚠️ You cannot start new games during this time.\n";
+        $message .= "✅ Ongoing games can still be completed.\n\n";
+        $message .= "🕐 Quiet Hours: {$quietStart} - {$quietEnd}\n";
+        $message .= "See you soon! 🎲";
+        
+        // Get all user IDs
+        $stmt = $pdo->query('SELECT id FROM users');
+        $userIds = $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
+        
+        $sent = 0;
+        $failed = 0;
+        
+        foreach ($userIds as $userId) {
+            try {
+                $tg->sendMessage((int)$userId, $message);
+                $sent++;
+                usleep(50000); // 50ms delay
+            } catch (\Throwable $e) {
+                $failed++;
+            }
+        }
+        
+        // Mark quiet hours as active
+        $stmt = $pdo->prepare('INSERT INTO settings (`key`, `value`) VALUES ("quiet_hours_active", "1") ON DUPLICATE KEY UPDATE `value` = "1"');
+        $stmt->execute();
+        
+        echo json_encode([
+            'success' => true,
+            'message' => "Quiet hours activated! Notified {$sent} users ({$failed} failed)"
+        ]);
+        
+    } catch (\Throwable $e) {
+        echo json_encode([
+            'success' => false,
+            'message' => 'Error: ' . $e->getMessage()
+        ]);
+    }
+    exit;
+}
+
+if ($action === 'deactivate_quiet_hours') {
+    try {
+        $tg = new TelegramService($app->env('TELEGRAM_BOT_TOKEN', ''));
+        
+        // Prepare message
+        $message = "✅ Bot is Back Online!\n\n";
+        $message .= "🎮 You can now start new games.\n";
+        $message .= "🎲 Good luck and have fun!\n\n";
+        $message .= "Use /startgame to begin playing!";
+        
+        // Get all user IDs
+        $stmt = $pdo->query('SELECT id FROM users');
+        $userIds = $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
+        
+        $sent = 0;
+        $failed = 0;
+        
+        foreach ($userIds as $userId) {
+            try {
+                $tg->sendMessage((int)$userId, $message);
+                $sent++;
+                usleep(50000); // 50ms delay
+            } catch (\Throwable $e) {
+                $failed++;
+            }
+        }
+        
+        // Mark quiet hours as inactive
+        $stmt = $pdo->prepare('INSERT INTO settings (`key`, `value`) VALUES ("quiet_hours_active", "0") ON DUPLICATE KEY UPDATE `value` = "0"');
+        $stmt->execute();
+        
+        echo json_encode([
+            'success' => true,
+            'message' => "Quiet hours deactivated! Notified {$sent} users ({$failed} failed)"
+        ]);
+        
+    } catch (\Throwable $e) {
+        echo json_encode([
+            'success' => false,
+            'message' => 'Error: ' . $e->getMessage()
+        ]);
+    }
+    exit;
+}
+
 if ($action === 'generate_golden') {
     try {
         $model = $app->setting('openai_model', $app->env('OPENAI_MODEL', 'gpt-5'));

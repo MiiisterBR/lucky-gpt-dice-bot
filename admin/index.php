@@ -137,6 +137,34 @@ $allUsers = $pdo->query('SELECT id, username, first_name, last_name, coins, wall
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
       <div class="bg-white p-4 rounded shadow">
+        <h2 class="font-semibold mb-3">Quiet Hours Control</h2>
+        <div class="mb-3">
+          <div class="text-sm text-gray-600 mb-1">Status:</div>
+          <div class="font-semibold <?php echo ((int)$app->setting('quiet_hours_active', 0) === 1) ? 'text-orange-600' : 'text-green-600'; ?>">
+            <?php echo ((int)$app->setting('quiet_hours_active', 0) === 1) ? '🌙 Bot Inactive (Quiet Hours)' : '✅ Bot Active'; ?>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <button id="activateQuietBtn" class="bg-orange-600 text-white rounded py-2 hover:bg-orange-700 transition text-sm">
+            🌙 Activate Quiet Hours
+          </button>
+          <button id="deactivateQuietBtn" class="bg-green-600 text-white rounded py-2 hover:bg-green-700 transition text-sm">
+            ✅ Deactivate Quiet Hours
+          </button>
+        </div>
+      </div>
+      <div class="bg-white p-4 rounded shadow">
+        <h2 class="font-semibold mb-3">Quick Info</h2>
+        <div class="text-sm space-y-1">
+          <div><span class="font-medium">Quiet Hours:</span> <?php echo htmlspecialchars($app->setting('quiet_hours_start', '23:00')); ?> - <?php echo htmlspecialchars($app->setting('quiet_hours_end', '00:00')); ?></div>
+          <div><span class="font-medium">Timezone:</span> <?php echo htmlspecialchars($timezone); ?></div>
+          <div><span class="font-medium">Sleep Between Rolls:</span> <?php echo $sleepMs; ?>ms</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+      <div class="bg-white p-4 rounded shadow">
         <h2 class="font-semibold mb-2">Top 7 Winners</h2>
         <ul class="text-sm list-disc pl-5">
           <?php foreach ($winners as $i => $r): $name = $r['username'] ?: trim(($r['first_name'] ?? '') . ' ' . ($r['last_name'] ?? '')) ?: ('ID '.$r['id']); ?>
@@ -356,6 +384,52 @@ $allUsers = $pdo->query('SELECT id, username, first_name, last_name, coins, wall
       }).fail(function() {
         showToast('Network error', 'error');
         btn.prop('disabled', false).text('Generate Golden Number');
+      });
+    });
+    
+    // Activate Quiet Hours
+    $('#activateQuietBtn').click(function() {
+      const btn = $(this);
+      if (!confirm('⚠️ This will notify all users that the bot is going inactive. Continue?')) {
+        return;
+      }
+      
+      btn.prop('disabled', true).text('Activating...');
+      
+      $.post('ajax.php', { action: 'activate_quiet_hours' }, function(res) {
+        if (res.success) {
+          showToast(res.message);
+          setTimeout(() => location.reload(), 1500);
+        } else {
+          showToast(res.message, 'error');
+          btn.prop('disabled', false).text('🌙 Activate Quiet Hours');
+        }
+      }).fail(function() {
+        showToast('Network error', 'error');
+        btn.prop('disabled', false).text('🌙 Activate Quiet Hours');
+      });
+    });
+    
+    // Deactivate Quiet Hours
+    $('#deactivateQuietBtn').click(function() {
+      const btn = $(this);
+      if (!confirm('✅ This will notify all users that the bot is back online. Continue?')) {
+        return;
+      }
+      
+      btn.prop('disabled', true).text('Deactivating...');
+      
+      $.post('ajax.php', { action: 'deactivate_quiet_hours' }, function(res) {
+        if (res.success) {
+          showToast(res.message);
+          setTimeout(() => location.reload(), 1500);
+        } else {
+          showToast(res.message, 'error');
+          btn.prop('disabled', false).text('✅ Deactivate Quiet Hours');
+        }
+      }).fail(function() {
+        showToast('Network error', 'error');
+        btn.prop('disabled', false).text('✅ Deactivate Quiet Hours');
       });
     });
     
