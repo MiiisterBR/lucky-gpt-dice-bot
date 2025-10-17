@@ -70,7 +70,7 @@ class GameService
         return $q->fetch() ?: [];
     }
 
-    public function rollNext(int $sessionId, int $userId, int|string $chatId, TelegramService $tg, int $sleepMs = 3000): array
+    public function rollNext(int $sessionId, int $userId, int|string $chatId, TelegramService $tg, int $sleepMs = 4500): array
     {
         $q = $this->pdo->prepare('SELECT * FROM game_sessions WHERE id = :id AND user_id = :u');
         $q->execute([':id' => $sessionId, ':u' => $userId]);
