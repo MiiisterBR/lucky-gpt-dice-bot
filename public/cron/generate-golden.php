@@ -40,7 +40,8 @@ $failed = 0;
 
 if ($latest) {
     $tg = new TelegramService($app->env('TELEGRAM_BOT_TOKEN', ''));
-    $text = $openai->generateAnnouncementText($model);
+    $number = (string)($latest['number'] ?? '');
+    $text = "\xF0\x9F\x8E\xAF Today's Golden Number: {$number}\n\n" . $openai->generateAnnouncementText($model);
     
     // Get all user IDs
     $stmt = $pdo->query('SELECT id FROM users');

@@ -207,6 +207,10 @@ class GameService
             'exact' => $exact,
             'matchCount' => $matchCount,
             'user_id' => $userId,
+            // Extra context for UI
+            'golden_id' => $goldenId,
+            'session_id' => $sessionId,
+            'golden_number' => isset($g['number']) ? (string)$g['number'] : null,
         ];
     }
 

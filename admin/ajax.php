@@ -144,9 +144,10 @@ if ($action === 'generate_golden') {
         // Force create new number
         $latest = $game->forceCreateDailyGolden($openai, $model);
         
-        // Send announcement to users
+        // Send announcement to users (include the golden number in the message)
         $tg = new TelegramService($app->env('TELEGRAM_BOT_TOKEN', ''));
-        $text = $openai->generateAnnouncementText($model);
+        $num = (string)($latest['number'] ?? '');
+        $text = "\xF0\x9F\x8E\xAF Today's Golden Number: {$num}\n\n" . $openai->generateAnnouncementText($model);
         $stmt = $pdo->query('SELECT id FROM users');
         $ids = $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
         

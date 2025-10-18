@@ -433,6 +433,10 @@ class TelegramController
             $msg .= "\n✅ Matched Digits: {$res['matchCount']}/7";
             $msg .= "\n🎁 Award: +{$res['award']} World Coins";
             $msg .= "\n💰 Current Balance: {$currentBalance} World Coins";
+            // Show golden number at the end of the game
+            if (!empty($res['golden_number'])) {
+                $msg .= "\n🎯 Golden Number: " . (string)$res['golden_number'];
+            }
             $msg .= "\n" . str_repeat('─', 30);
             
             if (!empty($res['exact'])) {
