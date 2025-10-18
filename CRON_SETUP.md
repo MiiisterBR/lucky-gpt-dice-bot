@@ -2,48 +2,54 @@
 
 ## Overview
 
-این پروژه نیاز به **2 Cron Job** داره که روزانه اجرا بشن:
+This project requires **2 automated daily cron jobs**:
 
-1. **Quiet Hours Start** (ساعت 23:00) - اعلام غیرفعال شدن بات
-2. **Generate Golden Number** (ساعت 00:00) - تولید عدد طلایی جدید
+1. **Quiet Hours Notification** (23:00) - Announces bot maintenance period
+2. **Generate Golden Number** (00:00) - Creates new daily challenge and notifies users
 
-## 📋 Prerequisites
+## Prerequisites
 
-- دسترسی به crontab سرور
-- PHP CLI نصب شده
-- Timezone در Admin Panel تنظیم شده باشه
+- Server access with cron/crontab capabilities
+- PHP CLI installed (check: `php -v`)
+- Timezone configured in Admin Panel
+- Write permissions for `storage/logs/` directory
 
-## ⚙️ تنظیم Timezone
+## Step 1: Configure Timezone
 
-قبل از تنظیم Cron ها، حتماً **Timezone** رو از پنل ادمین تنظیم کن:
+**Important:** Set your timezone in the Admin Panel before setting up cron jobs.
 
-1. برو `/admin`
-2. کلیک **Edit Settings**
-3. انتخاب Timezone (مثلاً `Asia/Tehran` برای ایران)
-4. **Save Settings**
+1. Visit `/admin` in your browser
+2. Click **Edit Settings**
+3. Select your timezone (e.g., `Asia/Tehran` for Iran, `America/New_York` for EST, `Europe/London` for UK)
+4. Click **Save Settings**
 
-## 🕐 Cron Job #1: Quiet Hours Start (23:00)
+This ensures cron jobs run at the correct local time.
 
-**هدف:** اطلاع‌رسانی به کاربران که بات از ساعت 23:00 تا 00:00 غیرفعال می‌شه.
+## Step 2: Cron Job #1 - Quiet Hours Notification (23:00)
 
-### کد Cron:
+### Purpose
+Sends a notification to all users at 23:00 (11:00 PM) announcing that the bot will be inactive for maintenance from 23:00 to 00:00 (midnight).
+
+### Cron Command
 ```bash
 0 23 * * * php /path/to/project/public/cron/quiet-hours-start.php >> /path/to/project/storage/logs/cron-quiet.log 2>&1
 ```
 
-### توضیحات:
-- **0 23 * * *** = هر روز ساعت 23:00
-- **php .../quiet-hours-start.php** = اجرای اسکریپت PHP
-- **>> .../cron-quiet.log** = ذخیره خروجی در log
-- **2>&1** = ذخیره خطاها هم در همون log
+### Breaking Down the Command
+- `0 23 * * *` - Run at 23:00 (11 PM) every day
+  - `0` = minute (0)
+  - `23` = hour (23 = 11 PM)
+  - `* * *` = every day of month, every month, every day of week
+- `php /path/to/.../quiet-hours-start.php` - Execute the PHP script
+- `>> .../cron-quiet.log` - Append output to log file
+- `2>&1` - Redirect errors to the same log file
 
-### عملکرد:
-1. پیام اطلاع‌رسانی به همه کاربران می‌فرسته
-2. می‌گه که بات از 23:00 تا 00:00 غیرفعاله
-3. کاربران می‌تونن بازی‌های فعلی رو تموم کنن
-4. نمی‌تونن بازی جدید شروع کنن
+### What It Does
+1. Sends a notification message to all registered users
+2. Informs them the bot will be inactive from 23:00 to 00:00
+3. Users can complete ongoing games but cannot start new ones during this period
 
-### پیام نمونه:
+### Example Message Sent to Users
 ```
 🌙 Bot Maintenance Notice
 
@@ -56,171 +62,276 @@ The bot will be inactive from 23:00 to 00:00 for daily maintenance.
 See you soon! 🎲
 ```
 
-## 🕛 Cron Job #2: Generate Golden Number (00:00)
+## Step 3: Cron Job #2 - Generate Golden Number (00:00)
 
-**هدف:** تولید عدد طلایی 7 رقمی جدید و اعلام به همه کاربران.
+### Purpose
+Generates a new 7-digit golden number at midnight (00:00) using OpenAI and broadcasts it to all users.
 
-### کد Cron:
+### Cron Command
 ```bash
 0 0 * * * php /path/to/project/public/cron/generate-golden.php >> /path/to/project/storage/logs/cron-golden.log 2>&1
 ```
 
-### توضیحات:
-- **0 0 * * *** = هر روز ساعت 00:00 (نیمه‌شب)
-- **php .../generate-golden.php** = اجرای اسکریپت PHP
-- **>> .../cron-golden.log** = ذخیره خروجی در log
+### Breaking Down the Command
+- `0 0 * * *` - Run at 00:00 (midnight) every day
+  - `0` = minute (0)
+  - `0` = hour (0 = midnight)
+  - `* * *` = every day of month, every month, every day of week
+- `php /path/to/.../generate-golden.php` - Execute the PHP script
+- `>> .../cron-golden.log` - Append output to log file
+- `2>&1` - Redirect errors to the same log file
 
-### عملکرد:
-1. عدد طلایی 7 رقمی جدید تولید می‌کنه (با OpenAI یا fallback تصادفی)
-2. عدد رو در دیتابیس ذخیره می‌کنه
-3. پیام اعلام به همه کاربران می‌فرسته
-4. عدد رو به عنوان "announced" علامت می‌زنه
+### What It Does
+1. Generates a new 7-digit golden number using OpenAI API (or random fallback if API fails)
+2. Saves the number to the `golden_numbers` database table
+3. Sends an announcement message to all registered users
+4. Marks the golden number as `announced`
 
-### پیام نمونه (تولید شده با ChatGPT):
+### Example Message Sent to Users
 ```
 The new golden number is ready! Try your luck and start a new game with /startgame and roll up to 7 times.
 ```
+*(Message is generated by ChatGPT for variety)*
 
-## 🛠️ مراحل تنظیم (Linux/Ubuntu)
+## Step 4: Setup Instructions for Linux/Ubuntu
 
-### 1. باز کردن Crontab:
+### 1. Open Crontab Editor
 ```bash
 crontab -e
 ```
 
-### 2. اضافه کردن هر دو Cron Job:
+### 2. Add Both Cron Jobs
+Add these two lines to your crontab file:
+
 ```bash
-# Quiet Hours Start (23:00)
+# Quiet Hours Notification (23:00)
 0 23 * * * php /var/www/html/mindroll/public/cron/quiet-hours-start.php >> /var/www/html/mindroll/storage/logs/cron-quiet.log 2>&1
 
 # Generate Golden Number (00:00)
 0 0 * * * php /var/www/html/mindroll/public/cron/generate-golden.php >> /var/www/html/mindroll/storage/logs/cron-golden.log 2>&1
 ```
 
-**نکته:** مسیر `/var/www/html/mindroll` رو با مسیر واقعی پروژه‌ت جایگزین کن.
+**Important:** Replace `/var/www/html/mindroll` with your actual project path.
 
-### 3. ذخیره و خروج:
-- در **nano**: `Ctrl + X` → `Y` → `Enter`
-- در **vim**: `ESC` → `:wq` → `Enter`
+**Example Paths:**
+- cPanel: `/home/username/public_html/mindroll`
+- Shared hosting: `/home/yourusername/domains/yourdomain.com/public_html`
+- VPS: `/var/www/mindroll` or `/var/www/html/mindroll`
 
-### 4. چک کردن Cron ها:
+### 3. Save and Exit
+- **nano editor**: Press `Ctrl + X`, then `Y`, then `Enter`
+- **vim editor**: Press `ESC`, type `:wq`, press `Enter`
+
+### 4. Verify Cron Jobs
+List all cron jobs to verify they were added:
 ```bash
 crontab -l
 ```
 
-## 🪟 مراحل تنظیم (Windows - Task Scheduler)
+You should see both cron jobs listed.
 
-### برای Quiet Hours Start (23:00):
+## Step 5: Setup Instructions for Windows (Task Scheduler)
 
-1. باز کن: **Task Scheduler** (جستجو در Start Menu)
-2. کلیک **Create Basic Task**
-3. نام: `Bot Quiet Hours Start`
-4. Trigger: **Daily** → ساعت **23:00**
-5. Action: **Start a program**
-   - Program: `C:\laragon\bin\php\php-8.x\php.exe`
-   - Arguments: `D:\Programming\WebSrv\laragon\www\mindroll\public\cron\quiet-hours-start.php`
-6. **Finish**
+### Task #1: Quiet Hours Notification (23:00)
 
-### برای Generate Golden Number (00:00):
+1. Open **Task Scheduler** (search in Start Menu)
+2. Click **Create Basic Task**
+3. **Name:** `Bot Quiet Hours Notification`
+4. **Trigger:** Daily at **23:00** (11:00 PM)
+5. **Action:** Start a program
+   - **Program/script:** `C:\laragon\bin\php\php-8.2\php.exe`
+   - **Add arguments:** `D:\Programming\WebSrv\laragon\www\mindroll\public\cron\quiet-hours-start.php`
+   - **Start in (optional):** `D:\Programming\WebSrv\laragon\www\mindroll`
+6. Click **Finish**
 
-1. **Create Basic Task**
-2. نام: `Bot Generate Golden Number`
-3. Trigger: **Daily** → ساعت **00:00** (midnight)
-4. Action: **Start a program**
-   - Program: `C:\laragon\bin\php\php-8.x\php.exe`
-   - Arguments: `D:\Programming\WebSrv\laragon\www\mindroll\public\cron\generate-golden.php`
-5. **Finish**
+### Task #2: Generate Golden Number (00:00)
 
-**نکته:** مسیر PHP رو بر اساس نصب Laragon یا XAMPP خودت تنظیم کن.
+1. Click **Create Basic Task** again
+2. **Name:** `Bot Generate Golden Number`
+3. **Trigger:** Daily at **00:00** (midnight)
+4. **Action:** Start a program
+   - **Program/script:** `C:\laragon\bin\php\php-8.2\php.exe`
+   - **Add arguments:** `D:\Programming\WebSrv\laragon\www\mindroll\public\cron\generate-golden.php`
+   - **Start in (optional):** `D:\Programming\WebSrv\laragon\www\mindroll`
+5. Click **Finish**
 
-## 📊 بررسی Log ها
+**Important Notes:**
+- Replace `C:\laragon\bin\php\php-8.2\php.exe` with your actual PHP path
+  - **Laragon:** `C:\laragon\bin\php\php-8.x\php.exe`
+  - **XAMPP:** `C:\xampp\php\php.exe`
+  - **WAMP:** `C:\wamp64\bin\php\php8.x\php.exe`
+- Replace the project path with your actual installation directory
 
-### چک کردن Quiet Hours Log:
+## Step 6: Verify Cron Jobs Are Working
+
+### Check Quiet Hours Log
 ```bash
-tail -f storage/logs/cron-quiet-start.log
+tail -f storage/logs/cron-quiet.log
 ```
 
-نمونه خروجی:
+**Expected Output:**
 ```
-[2025-10-17 23:00:01] Sent: 125, Failed: 2
+[2025-10-17 23:00:01] Quiet hours notification sent to 125 users (2 failed)
 ```
 
-### چک کردن Generate Golden Log:
+### Check Generate Golden Number Log
 ```bash
-tail -f storage/logs/cron-generate-golden.log
+tail -f storage/logs/cron-golden.log
 ```
 
-نمونه خروجی:
+**Expected Output:**
 ```
-[2025-10-18 00:00:03] Generated: 3847261, Sent: 127, Failed: 1
+[2025-10-18 00:00:03] Golden number generated: 3847261 | Sent to 127 users (4 failed)
 ```
 
-## 🧪 تست دستی (قبل از تنظیم Cron)
+### On Windows
+Navigate to `storage/logs/` folder and open the log files in a text editor.
 
-### تست Quiet Hours:
+## Step 7: Test Manually Before Setting Up Cron
+
+**Important:** Always test the scripts manually before adding them to cron.
+
+### Test Quiet Hours Script
 ```bash
+cd /path/to/project
 php public/cron/quiet-hours-start.php
 ```
 
-خروجی موفق:
+**Success Output:**
 ```
 Quiet hours notification sent to 150 users (2 failed)
 ```
 
-### تست Generate Golden:
+### Test Generate Golden Number Script
 ```bash
+cd /path/to/project
 php public/cron/generate-golden.php
 ```
 
-خروجی موفق:
+**Success Output:**
 ```
 Golden number generated: 5732819 | Sent to 148 users (4 failed)
 ```
 
-## ⚠️ مشکلات احتمالی
+### On Windows (Laragon/XAMPP)
+```cmd
+cd D:\Programming\WebSrv\laragon\www\mindroll
+C:\laragon\bin\php\php-8.2\php.exe public/cron/quiet-hours-start.php
+C:\laragon\bin\php\php-8.2\php.exe public/cron/generate-golden.php
+```
 
-### 1. Cron اجرا نمیشه
-**راه‌حل:**
-- چک کن PHP CLI نصب باشه: `php -v`
-- مسیر PHP رو کامل بنویس: `/usr/bin/php` یا `C:\laragon\bin\php\php.exe`
+## Troubleshooting
 
-### 2. Permission denied
-**راه‌حل:**
+### Problem 1: Cron Jobs Not Running
+
+**Solution:**
+- Verify PHP CLI is installed: `php -v`
+- Use full path to PHP binary:
+  - Linux: `/usr/bin/php` (find with `which php`)
+  - Windows: `C:\laragon\bin\php\php-8.2\php.exe`
+- Check cron service is running (Linux):
+  ```bash
+  sudo systemctl status cron
+  ```
+
+### Problem 2: Permission Denied Errors
+
+**Solution (Linux only):**
 ```bash
 chmod +x public/cron/quiet-hours-start.php
 chmod +x public/cron/generate-golden.php
-chmod -R 777 storage/logs/
+chmod -R 755 storage/logs/
+chown -R www-data:www-data storage/logs/
 ```
 
-### 3. Timezone اشتباه
-**راه‌حل:**
-- برو `/admin` → Edit Settings
-- Timezone رو درست انتخاب کن
-- مثلاً برای ایران: `Asia/Tehran`
+### Problem 3: Wrong Timezone / Jobs Run at Wrong Time
 
-### 4. هیچ پیامی ارسال نمیشه
-**راه‌حل:**
-- چک کن `TELEGRAM_BOT_TOKEN` در `.env` درست باشه
-- بررسی کن که کاربران در دیتابیس وجود داشته باشن
-- Log ها رو چک کن: `storage/logs/cron-*.log`
+**Solution:**
+1. Go to `/admin` in your browser
+2. Click **Edit Settings**
+3. Select correct timezone from dropdown:
+   - Iran: `Asia/Tehran`
+   - USA EST: `America/New_York`
+   - USA PST: `America/Los_Angeles`
+   - UK: `Europe/London`
+   - India: `Asia/Kolkata`
+4. Save settings and wait for next scheduled run
 
-## 📝 نکات مهم
+### Problem 4: No Messages Being Sent
 
-1. **Timezone حیاتیه:** حتماً از پنل ادمین تنظیمش کن
-2. **Test کن:** قبل از تنظیم Cron، دستی تست کن
-3. **Log ها رو چک کن:** برای دیباگ مشکلات
-4. **Rate Limit:** بین پیام‌ها 50ms تأخیر هست تا Telegram block نکنه
+**Solution:**
+- Verify `TELEGRAM_BOT_TOKEN` in `.env` is correct
+- Check that users exist in the `users` database table
+- Review log files: `storage/logs/cron-*.log`
+- Test bot token with Telegram API:
+  ```bash
+  curl https://api.telegram.org/bot<YOUR_TOKEN>/getMe
+  ```
 
-## 🎯 Summary
+### Problem 5: Script Runs But Throws Errors
 
-| Cron Job | زمان | فایل | هدف |
-|----------|------|------|-----|
-| **Quiet Hours** | 23:00 | `quiet-hours-start.php` | اعلام غیرفعال شدن |
-| **Generate Golden** | 00:00 | `generate-golden.php` | تولید عدد طلایی |
+**Solution:**
+- Check database connection in `.env`
+- Ensure all database tables exist (run `migrations/game_complete.sql`)
+- Review PHP error logs:
+  - Linux: `/var/log/apache2/error.log` or `/var/log/nginx/error.log`
+  - Laragon: `laragon/logs/apache_error.log`
 
-بعد از تنظیم، هر شب:
-- ⏰ 23:00 → پیام quiet hours
-- 🚫 23:00-00:00 → بازی جدید ممنوع
-- ✅ 00:00 → عدد طلایی جدید + پیام به همه
+## Important Notes
 
-**همه چی آماده است!** 🚀
+1. **Timezone is Critical:** Always set timezone in Admin Panel before configuring cron jobs
+2. **Test First:** Manually test scripts before adding to cron
+3. **Monitor Logs:** Regularly check `storage/logs/cron-*.log` for issues
+4. **Rate Limiting:** Scripts include 50ms delay between messages to avoid Telegram rate limits
+5. **Quiet Hours Control:** You can manually enable/disable quiet hours from Admin Panel
+
+## Quick Reference
+
+| Cron Job | Time | Script | Purpose |
+|----------|------|--------|----------|
+| **Quiet Hours** | 23:00 | `quiet-hours-start.php` | Announce maintenance period |
+| **Generate Golden** | 00:00 | `generate-golden.php` | Create daily challenge |
+
+## Daily Schedule After Setup
+
+- **23:00** → Quiet hours notification sent to all users
+- **23:00-00:00** → New games blocked (ongoing games can finish)
+- **00:00** → New golden number generated and announced
+- **00:00+** → New games allowed, fresh daily challenge begins
+
+## Example: Complete Setup for Linux VPS
+
+```bash
+# 1. Edit crontab
+crontab -e
+
+# 2. Add these lines (replace paths with yours)
+0 23 * * * php /var/www/mindroll/public/cron/quiet-hours-start.php >> /var/www/mindroll/storage/logs/cron-quiet.log 2>&1
+0 0 * * * php /var/www/mindroll/public/cron/generate-golden.php >> /var/www/mindroll/storage/logs/cron-golden.log 2>&1
+
+# 3. Save and exit (Ctrl+X, Y, Enter in nano)
+
+# 4. Verify
+crontab -l
+
+# 5. Check logs after scheduled time
+tail -f /var/www/mindroll/storage/logs/cron-*.log
+```
+
+## Example: cPanel Cron Jobs Setup
+
+1. Login to cPanel
+2. Find **Cron Jobs** under Advanced section
+3. For each job, set:
+   - **Minute:** 0
+   - **Hour:** 23 (for quiet hours) or 0 (for golden number)
+   - **Day, Month, Weekday:** *
+   - **Command:**
+     ```bash
+     php /home/username/public_html/mindroll/public/cron/quiet-hours-start.php >> /home/username/public_html/mindroll/storage/logs/cron-quiet.log 2>&1
+     ```
+4. Click **Add New Cron Job**
+
+---
+
+**Setup Complete!** 🚀 Your bot will now automatically handle quiet hours and daily golden number generation.

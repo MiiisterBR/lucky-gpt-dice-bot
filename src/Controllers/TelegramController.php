@@ -342,10 +342,22 @@ class TelegramController
             $openai = new OpenAIService((string)$this->app->env('OPENAI_API_KEY', ''));
             $golden = $this->game->getOrCreateDailyGolden($openai, $model);
             if (!$golden) { $this->tg->sendMessage($chatId, "Golden number is not ready yet.", $this->tg->defaultReplyKeyboard(false)); return; }
-            $session = $this->game->startSession($userId, (int)$golden['id']);
-            $sleepMs = (int)$this->app->setting('sleep_ms_between_rolls', $this->app->env('SLEEP_MS_BETWEEN_ROLLS', 3000));
-            $res = $this->game->rollNext((int)$session['id'], $userId, $chatId, $this->tg, $sleepMs);
-            $this->sendProgressMessage($chatId, $res, $model);
+            
+            try {
+                $session = $this->game->startSession($userId, (int)$golden['id']);
+                $sleepMs = (int)$this->app->setting('sleep_ms_between_rolls', $this->app->env('SLEEP_MS_BETWEEN_ROLLS', 3000));
+                $res = $this->game->rollNext((int)$session['id'], $userId, $chatId, $this->tg, $sleepMs);
+                
+                // Check if roll was successful
+                if (isset($res['ok']) && $res['ok'] === false) {
+                    $this->tg->sendMessage($chatId, $res['message'] ?? 'Roll failed', $this->tg->defaultReplyKeyboard(true));
+                    return;
+                }
+                
+                $this->sendProgressMessage($chatId, $res, $model);
+            } catch (\Exception $e) {
+                $this->tg->sendMessage($chatId, $e->getMessage(), $this->tg->defaultReplyKeyboard(false));
+            }
             return;
         }
         if (preg_match('/^\/next$/i', $text)) {
@@ -354,6 +366,13 @@ class TelegramController
             $sleepMs = (int)$this->app->setting('sleep_ms_between_rolls', $this->app->env('SLEEP_MS_BETWEEN_ROLLS', 3000));
             $model = (string)$this->app->setting('openai_model', $this->app->env('OPENAI_MODEL', 'gpt-5'));
             $res = $this->game->rollNext((int)$active['id'], $userId, $chatId, $this->tg, $sleepMs);
+            
+            // Check if roll was successful
+            if (isset($res['ok']) && $res['ok'] === false) {
+                $this->tg->sendMessage($chatId, $res['message'] ?? 'Roll failed', $this->tg->defaultReplyKeyboard(true));
+                return;
+            }
+            
             $this->sendProgressMessage($chatId, $res, $model);
             return;
         }
@@ -396,6 +415,12 @@ class TelegramController
 
     private function sendProgressMessage(int|string $chatId, array $res, string $model): void
     {
+        // Safety check for required fields
+        if (!isset($res['rolls_count']) || !isset($res['last_roll'])) {
+            $this->tg->sendMessage($chatId, "⚠️ Error: Invalid roll response", $this->tg->defaultReplyKeyboard(true));
+            return;
+        }
+        
         $digits = implode(', ', str_split((string)($res['result_digits'] ?? '')));
         $msg = "🎲 Roll {$res['rolls_count']}/7: {$res['last_roll']}\n📊 Progress: {$digits}";
         

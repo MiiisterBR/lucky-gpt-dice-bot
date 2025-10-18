@@ -3,5 +3,6 @@
 /.env.local
 /.DS_Store
 /node_modules/
-mindroll.zip
-mindroll.rar
+/storage/
+/.mindroll.zip
+/.mindroll.rar
