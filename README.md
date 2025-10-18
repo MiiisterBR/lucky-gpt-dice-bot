@@ -100,12 +100,12 @@ php -r "echo password_hash('YourStrongPassword', PASSWORD_BCRYPT), PHP_EOL;"
 
 6) BotFather — create bot & set webhook
 - In Telegram, open `@BotFather` → `/newbot` → get token.
-- Set webhook (example domain `mindroll.misterbr.ir`):
+- Set webhook (example domain `misterbr.ir`):
 ```
 # docroot = public
-https://api.telegram.org/bot<YOUR_TOKEN>/setWebhook?url=https://mindroll.misterbr.ir/game.php&drop_pending_updates=true
+https://api.telegram.org/bot<YOUR_TOKEN>/setWebhook?url=https://misterbr.ir/game.php&drop_pending_updates=true
 # docroot = root
-https://api.telegram.org/bot<YOUR_TOKEN>/setWebhook?url=https://mindroll.misterbr.ir/public/game.php&drop_pending_updates=true
+https://api.telegram.org/bot<YOUR_TOKEN>/setWebhook?url=https://misterbr.ir/public/game.php&drop_pending_updates=true
 ```
 - Set description and commands:
 ```
