@@ -45,9 +45,10 @@ class GameService
         $existing = $this->goldens->forDate($today);
         if ($existing) return $existing;
         $num = method_exists($openAI, 'generateSevenDigit') ? $openAI->generateSevenDigit($model) : '';
-        if (!preg_match('/^\d{7}$/', $num)) {
+        // Validate that all digits are between 1-6 (dice values)
+        if (!preg_match('/^[1-6]{7}$/', $num)) {
             $n = '';
-            for ($i = 0; $i < 7; $i++) { $n .= (string)random_int(0, 9); }
+            for ($i = 0; $i < 7; $i++) { $n .= (string)random_int(1, 6); }
             $num = $n;
         }
         $this->goldens->create($num, 'openai');
@@ -58,9 +59,10 @@ class GameService
     {
         // Admin can force create a new golden number even if one exists for today
         $num = method_exists($openAI, 'generateSevenDigit') ? $openAI->generateSevenDigit($model) : '';
-        if (!preg_match('/^\d{7}$/', $num)) {
+        // Validate that all digits are between 1-6 (dice values)
+        if (!preg_match('/^[1-6]{7}$/', $num)) {
             $n = '';
-            for ($i = 0; $i < 7; $i++) { $n .= (string)random_int(0, 9); }
+            for ($i = 0; $i < 7; $i++) { $n .= (string)random_int(1, 6); }
             $num = $n;
         }
         $this->goldens->create($num, 'openai');

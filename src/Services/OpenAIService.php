@@ -27,7 +27,7 @@ class OpenAIService
                 'json' => [
                     'model' => $model,
                     'messages' => [
-                        ['role' => 'user', 'content' => "Produce a random 7-digit number (digits only, no text). Return only the number (e.g., 7359246)."],
+                        ['role' => 'user', 'content' => "Produce a random 7-digit number using only digits 1-6 (like dice values). Return only the number (e.g., 2461535)."],
                     ],
                     'temperature' => 1.0,
                     'max_tokens' => 8,
@@ -35,13 +35,15 @@ class OpenAIService
             ]);
             $data = json_decode((string)$res->getBody(), true);
             $cand = trim($data['choices'][0]['message']['content'] ?? '');
-            if (preg_match('/^\d{7}$/', $cand)) {
+            // Validate that all digits are between 1-6
+            if (preg_match('/^[1-6]{7}$/', $cand)) {
                 return $cand;
             }
         } catch (\Throwable $e) {
         }
+        // Fallback: generate random 7-digit number using only 1-6 (dice values)
         $n = '';
-        for ($i = 0; $i < 7; $i++) { $n .= (string)random_int(0, 9); }
+        for ($i = 0; $i < 7; $i++) { $n .= (string)random_int(1, 6); }
         return $n;
     }
 
