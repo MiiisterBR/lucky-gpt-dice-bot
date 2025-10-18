@@ -53,9 +53,11 @@ INSERT INTO `settings` (`key`, `value`) VALUES
 ('score_match_5', '15'),
 ('score_all_unordered', '30'),
 ('score_exact_ordered', '10000'),
-('dice_cost', '0'),
+('game_start_cost', '0'),
+('roll_cost', '0'),
 ('log_requests', 'false'),
-('timezone', 'UTC')
+('timezone', 'UTC'),
+('quiet_hours_active', '0')
 ON DUPLICATE KEY UPDATE `value` = VALUES(`value`);
 
 -- =============================================

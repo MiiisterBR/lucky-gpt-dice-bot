@@ -77,6 +77,28 @@ class GameService
 
     public function startSession(int $userId, int $goldenId): array
     {
+        // Get game start cost
+        $startCost = (int)$this->setting('game_start_cost', 0);
+        
+        // Deduct cost if any
+        if ($startCost > 0) {
+            $currentCoins = $this->users->getCoins($userId);
+            if ($currentCoins < $startCost) {
+                throw new \Exception("Insufficient balance. Need {$startCost} coins to start a game.");
+            }
+            $this->users->addPoints($userId, -$startCost);
+            
+            // Record transaction
+            $this->transactions->create(
+                $userId,
+                'loss',
+                $startCost,
+                $goldenId,
+                null,
+                "Game start fee: {$startCost} coins"
+            );
+        }
+        
         $st = $this->pdo->prepare(
             'INSERT INTO game_sessions (user_id, golden_id, rolls_count, throws_remaining, finished, score_awarded, paused) 
              VALUES (:u, :g, 0, 7, 0, 0, 0)'
@@ -97,6 +119,28 @@ class GameService
         if ((int)$s['finished'] === 1) return ['ok' => false, 'message' => 'Session already finished.'];
         $count = (int)$s['rolls_count'];
         if ($count >= 7) return ['ok' => false, 'message' => 'All rolls are already done.'];
+
+        // Get roll cost
+        $rollCost = (int)$this->setting('roll_cost', 0);
+        
+        // Deduct cost if any
+        if ($rollCost > 0) {
+            $currentCoins = $this->users->getCoins($userId);
+            if ($currentCoins < $rollCost) {
+                return ['ok' => false, 'message' => "Insufficient balance. Need {$rollCost} coins to roll."];
+            }
+            $this->users->addPoints($userId, -$rollCost);
+            
+            // Record transaction
+            $this->transactions->create(
+                $userId,
+                'loss',
+                $rollCost,
+                (int)$s['golden_id'],
+                $sessionId,
+                "Roll fee: {$rollCost} coins"
+            );
+        }
 
         $dice = $tg->sendDice($chatId);
         $val = $dice['result']['dice']['value'] ?? ($dice['result']['value'] ?? null);
@@ -237,6 +281,16 @@ class GameService
     {
         $stmt = $this->pdo->prepare(
             'UPDATE game_sessions SET paused = 0, paused_at = NULL 
+             WHERE id = :id AND user_id = :user_id AND finished = 0'
+        );
+        return $stmt->execute([':id' => $sessionId, ':user_id' => $userId]);
+    }
+    
+    public function stopSession(int $sessionId, int $userId): bool
+    {
+        // Mark session as finished without any award
+        $stmt = $this->pdo->prepare(
+            'UPDATE game_sessions SET finished = 1, score_awarded = 0 
              WHERE id = :id AND user_id = :user_id AND finished = 0'
         );
         return $stmt->execute([':id' => $sessionId, ':user_id' => $userId]);

@@ -48,6 +48,7 @@ class TelegramController
         $map = [
             'start' => '/startgame',
             'next' => '/next',
+            'stop' => '/stop',
             'status' => '/status',
             'leaderboard' => '/leaderboard',
             'wallet' => '/wallet',
@@ -68,6 +69,7 @@ class TelegramController
             $help .= "🎮 Game Commands:\n";
             $help .= "/startgame - Start a new game\n";
             $help .= "/next - Roll the next dice\n";
+            $help .= "/stop - Stop current game\n";
             $help .= "/pause - Pause current game\n";
             $help .= "/resume - Resume paused game\n\n";
             $help .= "💰 Wallet Commands:\n";
@@ -295,6 +297,33 @@ class TelegramController
             $msg .= "🎯 Ready to continue! Use /next to roll";
             
             $this->tg->sendMessage($chatId, $msg, $this->tg->defaultReplyKeyboard(true));
+            return;
+        }
+        if (preg_match('/^\/stop$/i', $text)) {
+            $active = $this->game->getActiveSession($userId);
+            if (!$active) {
+                $this->tg->sendMessage($chatId, "⚠️ No active session to stop.\nStart a game with /startgame", $this->tg->defaultReplyKeyboard(false));
+                return;
+            }
+            if ((int)$active['finished'] === 1) {
+                $this->tg->sendMessage($chatId, "⚠️ This session is already finished.\nStart a new game with /startgame", $this->tg->defaultReplyKeyboard(false));
+                return;
+            }
+            
+            $this->game->stopSession((int)$active['id'], $userId);
+            $rollsDone = (int)$active['rolls_count'];
+            $digits = $active['result_digits'] ?? '';
+            
+            $msg = "🛑 Game Stopped\n";
+            $msg .= str_repeat('─', 30) . "\n";
+            $msg .= "📊 Progress: {$rollsDone}/7 rolls\n";
+            if ($digits) {
+                $msg .= "🔢 Your Digits: " . implode(', ', str_split($digits)) . "\n";
+            }
+            $msg .= str_repeat('─', 30) . "\n\n";
+            $msg .= "💡 You can start a new game with /startgame";
+            
+            $this->tg->sendMessage($chatId, $msg, $this->tg->defaultReplyKeyboard(false));
             return;
         }
         if (preg_match('/^\/startgame$/i', $text)) {

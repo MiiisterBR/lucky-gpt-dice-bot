@@ -108,6 +108,8 @@ $minBal = (int)$app->setting('withdraw_min_balance', 1001);
 $startCoins = (int)$app->setting('start_coins', 1000);
 $modelName = (string)$app->setting('openai_model', 'gpt-5');
 $timezone = (string)$app->setting('timezone', 'UTC');
+$gameStartCost = (int)$app->setting('game_start_cost', 0);
+$rollCost = (int)$app->setting('roll_cost', 0);
 
 $allUsers = $pdo->query('SELECT id, username, first_name, last_name, coins, wallet_address, created_at, updated_at FROM users ORDER BY id DESC')->fetchAll();
 
@@ -194,6 +196,7 @@ $allUsers = $pdo->query('SELECT id, username, first_name, last_name, coins, wall
         <div><span class="font-medium">Quiet Hours:</span> <?php echo htmlspecialchars($quietStart); ?> - <?php echo htmlspecialchars($quietEnd); ?></div>
         <div><span class="font-medium">Scoring:</span> 3match=<?php echo $score3; ?>, 5match=<?php echo $score5; ?>, Unord=<?php echo $scoreUnord; ?>, Exact=<?php echo $scoreExact; ?></div>
         <div><span class="font-medium">Start Coins:</span> <?php echo $startCoins; ?>, Min Withdraw: <?php echo $minBal; ?></div>
+        <div><span class="font-medium">Game Costs:</span> Start Game: <?php echo $gameStartCost; ?> coins, Per Roll: <?php echo $rollCost; ?> coins</div>
         <div><span class="font-medium">OpenAI Model:</span> <?php echo htmlspecialchars($modelName); ?></div>
       </div>
     </div>
@@ -266,6 +269,16 @@ $allUsers = $pdo->query('SELECT id, username, first_name, last_name, coins, wall
           </label>
           <label class="block"> <span class="text-sm text-gray-600">OpenAI Model</span>
             <input name="openai_model" value="<?php echo htmlspecialchars($modelName); ?>" class="w-full border rounded p-2" />
+          </label>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <label class="block"> <span class="text-sm text-gray-600">Game Start Cost (coins)</span>
+            <input name="game_start_cost" type="number" min="0" value="<?php echo $gameStartCost; ?>" class="w-full border rounded p-2" />
+            <span class="text-xs text-gray-500">Cost to start a new game (0 = free)</span>
+          </label>
+          <label class="block"> <span class="text-sm text-gray-600">Roll Cost (coins)</span>
+            <input name="roll_cost" type="number" min="0" value="<?php echo $rollCost; ?>" class="w-full border rounded p-2" />
+            <span class="text-xs text-gray-500">Cost per dice roll (0 = free)</span>
           </label>
         </div>
             <div class="flex gap-2">

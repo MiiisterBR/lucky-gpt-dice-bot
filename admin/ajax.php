@@ -193,6 +193,8 @@ if ($action === 'update_settings') {
         $withdrawMin = (string)max(0, (int)($_POST['withdraw_min_balance'] ?? 1001));
         $openaiModel = trim($_POST['openai_model'] ?? 'gpt-5');
         $timezone = trim($_POST['timezone'] ?? 'UTC');
+        $gameStartCost = (string)max(0, (int)($_POST['game_start_cost'] ?? 0));
+        $rollCost = (string)max(0, (int)($_POST['roll_cost'] ?? 0));
         
         $settings = [
             'deposit_wallet_address' => $deposit,
@@ -207,6 +209,8 @@ if ($action === 'update_settings') {
             'withdraw_min_balance' => $withdrawMin,
             'openai_model' => $openaiModel,
             'timezone' => $timezone,
+            'game_start_cost' => $gameStartCost,
+            'roll_cost' => $rollCost,
         ];
         
         $stmt = $pdo->prepare('INSERT INTO settings (`key`, `value`) VALUES (:k, :v) ON DUPLICATE KEY UPDATE `value` = :v');

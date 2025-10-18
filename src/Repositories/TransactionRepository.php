@@ -143,24 +143,25 @@ class TransactionRepository
      */
     public function getLeaderboardByWins(int $limit = 10): array
     {
-        $stmt = $this->pdo->prepare(
-            'SELECT 
+        $limit = max(1, min(100, (int)$limit)); // Sanitize between 1-100
+        
+        $stmt = $this->pdo->query(
+            "SELECT 
                 t.user_id,
                 u.username,
                 u.first_name,
                 u.last_name,
                 u.coins,
-                SUM(CASE WHEN t.type = "win" THEN t.amount ELSE 0 END) as total_wins,
-                COUNT(CASE WHEN t.type = "win" THEN 1 END) as win_count,
-                COUNT(CASE WHEN t.type = "loss" THEN 1 END) as loss_count
+                SUM(CASE WHEN t.type = 'win' THEN t.amount ELSE 0 END) as total_wins,
+                COUNT(CASE WHEN t.type = 'win' THEN 1 END) as win_count,
+                COUNT(CASE WHEN t.type = 'loss' THEN 1 END) as loss_count
              FROM transactions t
              INNER JOIN users u ON t.user_id = u.id
-             WHERE t.status = "completed" AND t.type IN ("win", "loss")
+             WHERE t.status = 'completed' AND t.type IN ('win', 'loss')
              GROUP BY t.user_id, u.username, u.first_name, u.last_name, u.coins
              ORDER BY total_wins DESC
-             LIMIT :limit'
+             LIMIT {$limit}"
         );
-        $stmt->execute([':limit' => $limit]);
         return $stmt->fetchAll() ?: [];
     }
 

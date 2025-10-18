@@ -56,9 +56,11 @@ class TelegramService
     public function defaultReplyKeyboard(bool $hasActiveSession = false): array
     {
         $primary = $hasActiveSession ? 'Next' : 'Start';
+        $secondary = $hasActiveSession ? 'Stop' : 'Status';
+        
         return [
             'keyboard' => [
-                [ ['text' => $primary], ['text' => 'Status'] ],
+                [ ['text' => $primary], ['text' => $secondary] ],
                 [ ['text' => 'Leaderboard'], ['text' => 'Wallet'] ],
                 [ ['text' => 'Deposit'], ['text' => 'Withdraw'] ],
             ],
